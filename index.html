@@ -1619,4 +1619,73 @@ const _castRoar=cast;cast=function(i){if(dragonRoarStunT>0)return;return _castRo
 const _u7=update;update=function(dt){if(running&&!paused&&!gameOver){pre13(dt);if(paused)return}_u7(dt)};
 const _rs6=reset;reset=function(){_rs6();SOULS12.length=0;PACT.length=0;baronT=surgeT=eclipseT=0;bossAlive=false;for(const g of tgs){scene.remove(g.k==='c'?g.f:g.m);if(g.k==='c')scene.remove(g.r)}tgs.length=0;resetMatch();applyStats();hp=maxHp;updateHUD()};
 const _ok2=onKill;onKill=function(e){_ok2(e);const u=e.userData;if(u.boss)bossDefeated(u.boss,e);if(u.bounty){coins+=u.bounty;coinsDirty=true;banner('¡RECOMPENSA COBRADA!')}};
+
+/* Prueba de jefes: Ancestral a 0:20 y Nashor a 1:20. */
+let baronLiftT=0,baronRiseT=0,baronRising=null;
+const bossDeathVisuals=[];
+const _bossResetMatch=resetMatch;
+resetMatch=function(){_bossResetMatch();for(const o of OBJ){if(o.k==='dragon'){o.t=20;o.w=1}else if(o.k==='baron')o.t=80}document.querySelectorAll('.tlm[data-k]').forEach(m=>{const o=OBJ.find(x=>x.k===m.dataset.k);if(o)m.style.left=o.t/T_END*100+'%'})};
+const _bossSetEnemyAnim=setEnemyAnim;
+setEnemyAnim=function(u,state){if(u.bossAnimLockT>0)return;_bossSetEnemyAnim(u,state)};
+function playBossClip(e,matcher,duration){
+ const u=e.userData,tpl=ELT[u.boss];if(!tpl||!u.visualMixer)return false;
+ const clip=tpl.animations.find(a=>matcher.test(a.name||''));if(!clip)return false;
+ for(const a of Object.values(u.visualActions||{}))a.stop();if(u.bossAction)u.bossAction.stop();
+ const action=u.visualMixer.clipAction(clip);action.reset();action.enabled=true;action.setEffectiveWeight(1);action.setLoop(THREE.LoopOnce,1);action.clampWhenFinished=true;
+ action.setEffectiveTimeScale(clip.duration/Math.max(.01,duration));action.play();u.bossAction=action;u.bossAnimLockT=duration;return true;
+}
+function bossAttackClip(e,special=false){const u=e.userData;if(u.bossAnimLockT>0)return;
+ const re=u.boss==='dragon'?(special?/^Spell[12]$/i:/^Attack1$/i):(special?/^Spell[23]_Base$|^SRU_Baron_spell[23]\.anm$/i:/^SRU_Baron_attack1\.anm$|^Attack2$/i);
+ playBossClip(e,re,1.55);
+}
+function baronQuake(e){
+ baronLiftT=2;baronRiseT=3.2;baronRising=e;dragonRoarStunT=Math.max(dragonRoarStunT,2);
+ for(const q of enemies)q.userData.roarStunT=Math.max(q.userData.roarStunT||0,q===e?3.2:2);
+ for(const k in keys)keys[k]=false;
+ ring(e.position.x,e.position.z,0x9d5cff,45,1);ring(e.position.x,e.position.z,0xe7ccff,17,1);
+ spark(e.position.x,3,e.position.z,0xbd65ff,100,12,12,1.7);spark(hero.position.x,1,hero.position.z,0xad79ff,45,4,4,1.5);
+ shake(1.5);noise(1.5,.22,670,100);[64,49,39].forEach((f,i)=>tone(f,1.5,'sawtooth',.15,.8,i*.12));
+ banner('👁 ¡EL BARÓN SALE DEL SUELO! ¡TODO EL MAPA LEVANTADO 2 s!');
+}
+const _spawnBossModel=spawnBoss;
+spawnBoss=function(kind){_spawnBossModel(kind);const e=bossRef;if(!e||e.userData.boss!==kind)return;
+ const u=e.userData;u.bossAnimLockT=0;u.bossAction=null;
+ if(kind==='dragon')playBossClip(e,/^SRU_Dragon_elder_Spawn\.anm$/i,4.5);
+ if(kind==='baron'){playBossClip(e,/^SRU_Baron_spawn\.anm$|^Spawn_Crawlout$/i,3.2);baronQuake(e)}
+};
+const _bossAIModel=bossAI;
+bossAI=function(e,u,dt){if(u.bossAnimLockT>0||e===baronRising)return;
+ const doA=u.aT<=dt,doB=u.bT<=dt;
+ _bossAIModel(e,u,dt);
+ if((u.boss==='dragon'||u.boss==='baron')&&doA)bossAttackClip(e,false);
+ else if((u.boss==='dragon'||u.boss==='baron')&&doB)bossAttackClip(e,true);
+};
+function bossDeathClip(e){const u=e.userData,tpl=ELT[u.boss];if(!tpl)return;
+ const clip=tpl.animations.find(a=>/^Death$/i.test(a.name||''));if(!clip)return;
+ const original=e.children.find(c=>c.type==='Group'&&c!==u.shadow);if(!original)return;
+ const v=cloneSkeleton(original),g=new THREE.Group();g.position.copy(e.position);g.scale.copy(e.scale);g.rotation.copy(e.rotation);g.add(v);scene.add(g);
+ const mixer=new THREE.AnimationMixer(v),a=mixer.clipAction(clip);a.reset();a.setLoop(THREE.LoopOnce,1);a.clampWhenFinished=true;a.play();bossDeathVisuals.push({g,mixer,t:clip.duration});
+}
+const _bossOnKill=onKill;
+onKill=function(e){if(e.userData.boss)bossDeathClip(e);_bossOnKill(e)};
+const _bossReset=reset;
+reset=function(){baronLiftT=baronRiseT=0;baronRising=null;for(const b of bossDeathVisuals)scene.remove(b.g);bossDeathVisuals.length=0;_bossReset()};
+const _bossUpdate=update;
+update=function(dt){
+ if(running&&!paused&&!gameOver){for(const e of enemies)if(e.userData.boss)e.userData.bossAnimLockT=Math.max(0,(e.userData.bossAnimLockT||0)-dt)}
+ _bossUpdate(dt);
+ if(!running||paused||gameOver)return;
+ if(baronLiftT>0){baronLiftT=Math.max(0,baronLiftT-dt);const lift=4.8*Math.max(0,Math.sin(Math.PI*(2-baronLiftT)/2));
+  hero.position.y=(getRiftGroundHeight(hero.position.x,hero.position.z)??0)+lift;
+  for(const e of enemies){if(e!==baronRising)e.position.y=(getRiftGroundHeight(e.position.x,e.position.z)??0)+lift}
+  if(baronLiftT===0)for(const e of enemies){if(e!==baronRising)e.position.y=getRiftGroundHeight(e.position.x,e.position.z)??0}
+ }
+ if(baronRiseT>0&&baronRising&&enemies.includes(baronRising)){
+  baronRiseT=Math.max(0,baronRiseT-dt);const t=1-baronRiseT/3.2,ease=1-Math.pow(1-t,3);
+  baronRising.position.y=(getRiftGroundHeight(baronRising.position.x,baronRising.position.z)??0)-8*(1-ease);
+  if(baronRising.userData.visualMixer&&baronRising.userData.roarStunT>0)baronRising.userData.visualMixer.update(dt);
+  if(baronRiseT===0)baronRising=null;
+ }
+ for(let i=bossDeathVisuals.length-1;i>=0;i--){const g=bossDeathVisuals[i];g.t-=dt;g.mixer.update(dt);if(g.t<=0){scene.remove(g.g);bossDeathVisuals.splice(i,1)}}
+};
 </script></body></html>
