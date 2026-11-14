@@ -579,7 +579,7 @@ if(modelMixer){modelMixer.update(dragonRoarStunT>0?0:dt);modelAttackTimer=Math.m
 if(elapsed>=nextWaveAt){wave++;nextWaveAt+=60;showMessage(`¡OLEADA ${wave}!`);spawnTimer=Math.min(spawnTimer,.2)}
 spawnTimer-=dt;if(spawnTimer<=0){const count=Math.min(5,1+Math.floor((wave-1)/2)+(elapsed>35?1:0));for(let i=0;i<count;i++){const a=Math.random()*Math.PI*2,r=20+Math.random()*4;const isBig=elapsed>80&&Math.random()<Math.min(.28,.10+(wave-2)*.025);const isMage=!isBig&&elapsed>18&&Math.random()<Math.min(.48,.18+wave*.035);const e=makeEnemy(hero.position.x+Math.cos(a)*r,hero.position.z+Math.sin(a)*r,isBig,isMage);enemies.push(e)}spawnTimer=Math.max(.38,1.72-elapsed*.0065)}
 // Enemies pursue and make contact damage
-for(const e of [...enemies]){const u=e.userData;if(u.roarStunT>0){u.roarStunT=Math.max(0,u.roarStunT-dt);continue}let v=new THREE.Vector3().subVectors(hero.position,e.position);v.y=0;const d=v.length();let walking=false;if(u.knock&&u.hit>0){riftTryMove(e,u.knock.x*dt,u.knock.z*dt,.34);u.knock.multiplyScalar(Math.max(0,dt*5*-1+1));u.hit-=dt}else if(u.mage){if(d>8.5){v.normalize();riftTryMove(e,v.x*u.speed*dt,v.z*u.speed*dt,.34);walking=true}else if(d<5.5){v.normalize();riftTryMove(e,-v.x*u.speed*dt,-v.z*u.speed*dt,.34);walking=true}u.shotTimer-=dt;if(u.shotTimer<=0&&d<15){makeEnemyShot(e);u.shotTimer=Math.max(1.25,2.7-elapsed*.006)+Math.random()*.45}}else if(d>.95&&!u._quake){v.normalize();riftTryMove(e,v.x*u.speed*dt,v.z*u.speed*dt,.34);walking=true}else if(invuln<=0){hp-= (u.big?16:9)*(1-damageReduction)*dt;if(hp<=0){hp=0;endGame()}}e.lookAt(hero.position.x,hero.position.y,hero.position.z);u.walkPhase+=dt*(walking?10:3);const swing=walking?Math.sin(u.walkPhase)*.55:Math.sin(u.walkPhase)*.035;u.legs.forEach((part,i)=>part.rotation.x=i===0?swing:-swing);u.arms.forEach((part,i)=>part.rotation.x=i===0?-swing*.75:swing*.75);if(u.visualMixer){if(d<24||((FRN+e.id)&1)===0)u.visualMixer.update(d<24?dt:dt*2);setEnemyAnim(u,u._quake?'attack':(walking?'walk':(d<=.95?'attack':'idle')));}if(u.mageGem){u.mageGem.rotation.y+=dt*2.6;u.mageGem.position.y=1.78+Math.sin(elapsed*5+e.position.x)*.08}if(!(u.elite==='gromp'&&u._v12jump&&u._v12jump.phase==='air'))e.position.y=(getRiftGroundHeight(e.position.x,e.position.z) ?? 0)+(walking&&!u.visualMixer?Math.abs(Math.sin(u.walkPhase*2))*.035:0);e.position.x=THREE.MathUtils.clamp(e.position.x,-LIM(),LIM());e.position.z=THREE.MathUtils.clamp(e.position.z,-LIM(),LIM())}
+for(const e of [...enemies]){const u=e.userData;if(u.bossIntro)continue;if(u.roarStunT>0){u.roarStunT=Math.max(0,u.roarStunT-dt);continue}let v=new THREE.Vector3().subVectors(hero.position,e.position);v.y=0;const d=v.length();let walking=false;if(u.knock&&u.hit>0){riftTryMove(e,u.knock.x*dt,u.knock.z*dt,.34);u.knock.multiplyScalar(Math.max(0,dt*5*-1+1));u.hit-=dt}else if(u.mage){if(d>8.5){v.normalize();riftTryMove(e,v.x*u.speed*dt,v.z*u.speed*dt,.34);walking=true}else if(d<5.5){v.normalize();riftTryMove(e,-v.x*u.speed*dt,-v.z*u.speed*dt,.34);walking=true}u.shotTimer-=dt;if(u.shotTimer<=0&&d<15){makeEnemyShot(e);u.shotTimer=Math.max(1.25,2.7-elapsed*.006)+Math.random()*.45}}else if(d>.95&&!u._quake){v.normalize();riftTryMove(e,v.x*u.speed*dt,v.z*u.speed*dt,.34);walking=true}else if(invuln<=0){hp-= (u.big?16:9)*(1-damageReduction)*dt;if(hp<=0){hp=0;endGame()}}e.lookAt(hero.position.x,hero.position.y,hero.position.z);u.walkPhase+=dt*(walking?10:3);const swing=walking?Math.sin(u.walkPhase)*.55:Math.sin(u.walkPhase)*.035;u.legs.forEach((part,i)=>part.rotation.x=i===0?swing:-swing);u.arms.forEach((part,i)=>part.rotation.x=i===0?-swing*.75:swing*.75);if(u.visualMixer){if(d<24||((FRN+e.id)&1)===0)u.visualMixer.update(d<24?dt:dt*2);setEnemyAnim(u,u._quake?'attack':(walking?'walk':(d<=.95?'attack':'idle')));}if(u.mageGem){u.mageGem.rotation.y+=dt*2.6;u.mageGem.position.y=1.78+Math.sin(elapsed*5+e.position.x)*.08}if(!(u.elite==='gromp'&&u._v12jump&&u._v12jump.phase==='air'))e.position.y=(getRiftGroundHeight(e.position.x,e.position.z) ?? 0)+(walking&&!u.visualMixer?Math.abs(Math.sin(u.walkPhase*2))*.035:0);e.position.x=THREE.MathUtils.clamp(e.position.x,-LIM(),LIM());e.position.z=THREE.MathUtils.clamp(e.position.z,-LIM(),LIM())}
 // Auto-target nearest foe
 fireTimer-=dt;if(dragonRoarStunT<=0&&fireTimer<=0&&enemies.length){let target=null,best=28;for(const e of enemies){const d=e.position.distanceTo(hero.position);if(d<best){best=d;target=e}}if(target){const empowered=qEmpowered;qEmpowered=false;makeBolt(hero,target,false,empowered);if(empowered)0;if(extraBolts>0){const others=enemies.filter(e=>e!==target).sort((a,b)=>a.position.distanceToSquared(hero.position)-b.position.distanceToSquared(hero.position));for(let j=0;j<Math.min(extraBolts,others.length);j++)makeBolt(hero,others[j],false)}if(modelMixer&&modelActions.attack){modelAttackTimer=.24;setRealAnim('attack',true);}ud.cross.rotation.y=Math.atan2(target.position.x-hero.position.x,target.position.z-hero.position.z);ud.armR.rotation.x=-.45+Math.sin(elapsed*24)*.18;fireTimer=fireRate}}
 for(const b of [...bolts]){const u=b;u.life-=dt;if(u.homing&&u.target&&enemies.includes(u.target)){const aim=u.target.position.clone().sub(u.mesh.position);aim.y=0;if(aim.lengthSq()>.001){aim.normalize();u.dir.lerp(aim,Math.min(1,dt*5)).normalize();u.mesh.rotation.y=Math.atan2(u.dir.x,u.dir.z)}}u.mesh.position.addScaledVector(u.dir,u.speed*dt);u.mesh.position.y=1.15+Math.sin(elapsed*28)*.045;let remove=u.life<=0;for(const e of [...enemies]){if(u.hitTargets?.has(e))continue;const dxp=e.position.x-u.mesh.position.x,dzp=e.position.z-u.mesh.position.z;const hitRadius=e.userData.big?.82:.68;if(dxp*dxp+dzp*dzp<hitRadius*hitRadius){if(u.hitTargets)u.hitTargets.add(e);e.userData.hp-=u.damage;burst(new THREE.Vector3(u.mesh.position.x,.95,u.mesh.position.z),u.condemn?0xffd477:(u.empowered?0xffd477:0x6eeeff));if(u.condemn){const push=new THREE.Vector3().subVectors(e.position,hero.position);push.y=0;push.normalize();e.userData.knock=push.multiplyScalar(10);e.userData.hit=.45}if(e.userData.hp<=0)killEnemy(e);u.pierceRemaining=(u.pierceRemaining??1)-1;if(u.pierceRemaining<=0){remove=true;break}}}if(remove){scene.remove(u.mesh);bolts.splice(bolts.indexOf(u),1)}}
@@ -1388,6 +1388,34 @@ const _hh=heroHit;heroHit=function(a){if(FL.spell&&spellCD<=0&&invuln<=0&&barrie
 const _sh2=slowHero;slowHero=function(f,d){_sh2(f,d*(1-SLOWRES))};
 /* ---------- nuevos enemigos: lobo, raptor y cangrejo ---------- */
 const CRT={wolf:{h:1.3,hp:()=>5+wave*1.1,sp:3.4},raptor:{h:1.7,hp:()=>8+wave*1.6,sp:2.7},crab:{h:1.4,hp:()=>36+wave*6,sp:1.2}};
+
+function repairDragonBoneClips(model,clips){
+ // Algunos clips del GLB guardan DELTAS de posición en lugar de la posición de reposo.
+ // Al reproducirlos como animaciones absolutas, las 90+ articulaciones se juntan y el dragón encoge.
+ const byName=new Map();model.traverse(node=>{if(node.isBone&&node.name)byName.set(node.name,node)});
+ let fixed=0;
+ for(const clip of clips){
+  const degenerate=[];
+  let relevant=0;
+  for(const track of clip.tracks){
+   if(!track.name.endsWith('.position')||track.values.length<3)continue;
+   const name=track.name.slice(0,-9),bone=byName.get(name);
+   if(!bone||bone.position.length()<=.06)continue;
+   relevant++;
+   const first=Math.hypot(track.values[0],track.values[1],track.values[2]);
+   if(first<Math.max(.035,bone.position.length()*.16))degenerate.push([track,bone]);
+  }
+  if(relevant>=20&&degenerate.length/relevant>.65){
+   for(const [track,bone] of degenerate){
+    const vals=track.values;
+    for(let i=0;i<vals.length;i+=3){vals[i]+=bone.position.x;vals[i+1]+=bone.position.y;vals[i+2]+=bone.position.z}
+   }
+   clip.resetDuration();fixed++;
+  }
+ }
+ console.info('[Ancestral] Clips de esqueleto reparados:',fixed,'/',clips.length);
+}
+
 function loadCreature(kind,file){if(!file)return;const st=$(kind+'ModelStatus');if(st)st.textContent='Cargando…';gltfLoader.load(URL.createObjectURL(file),gltf=>{const model=gltf.scene;model.traverse(o=>{if(o.isMesh){o.castShadow=false;o.receiveShadow=true;if(o.material)o.material.side=THREE.FrontSide}});let b=new THREE.Box3().setFromObject(model);
  if(kind==='dragon'){
   // Evita un bounds/scale erróneo en el dragón animado (SkinnedMesh).
@@ -1403,7 +1431,7 @@ function loadCreature(kind,file){if(!file)return;const st=$(kind+'ModelStatus');
  }
  const s=b.getSize(new THREE.Vector3()),c=b.getCenter(new THREE.Vector3()),k=CRT[kind].h/Math.max(s.x,s.y,s.z,.001);
  model.scale.setScalar(k);model.position.set(-c.x*k,-b.min.y*k,-c.z*k);
- ELT[kind]={scene:model,animations:gltf.animations||[],file:file.name};if(st){st.textContent=file.name+' cargado ('+ELT[kind].animations.length+' clips). Se usará en los próximos que salgan.';st.style.color='#70e5d1'}},undefined,err=>{console.error(err);if(st){st.textContent='No se pudo cargar.';st.style.color='#ff8b9b'}})}
+ if(kind==='dragon')repairDragonBoneClips(model,gltf.animations||[]);ELT[kind]={scene:model,animations:gltf.animations||[],file:file.name};if(st){st.textContent=file.name+' cargado ('+ELT[kind].animations.length+' clips). Se usará en los próximos que salgan.';st.style.color='#70e5d1'}},undefined,err=>{console.error(err);if(st){st.textContent='No se pudo cargar.';st.style.color='#ff8b9b'}})}
 for(const k of['wolf','raptor','crab']){const B=$('load'+k[0].toUpperCase()+k.slice(1)+'Model'),I=$(k+'ModelFile');if(B&&I){B.addEventListener('click',()=>I.click());I.addEventListener('change',e=>loadCreature(k,e.target.files&&e.target.files[0]))}}
 window.addEventListener('load',()=>{for(const[kind,file]of[['wolf','lobo.glb'],['raptor','raptor.glb'],['crab','cangrejo.glb']])fetch('./'+file).then(r=>{if(!r.ok)throw 0;return r.blob()}).then(b=>loadCreature(kind,new File([b],file,{type:'model/gltf-binary'}))).catch(()=>{})});
 function mkBody(e,parts){const g=new THREE.Group();for(const[geo,col,p,r,em]of parts){const m=new THREE.Mesh(geo,em?new THREE.MeshBasicMaterial({color:col,toneMapped:false}):matTerrain(col));m.position.set(...p);if(r)m.rotation.set(...r);g.add(m)}e.add(g)}
@@ -1509,7 +1537,7 @@ addEventListener('keydown',e=>{if(shopOpen||!running||paused||gameOver||e.repeat
 /* ======================= v13: estructura de partida (linea temporal, jefes, eventos, encrucijadas) ======================= */
 Object.assign(TUNE,{bossHp:1});
 const BOSS={dragon:{n:'DRAGÓN ANCESTRAL',hp:()=>380+wave*25,sp:1.1,sc:1.5},baron:{n:'BARÓN NASHOR',hp:()=>900+wave*35,sp:.9,sc:1.6},nexus:{n:'NEXO CORRUPTO',hp:()=>1600+wave*40,sp:0,sc:1}};
-const OBJPOS={dragon:[72,72],baron:[-72,-72],nexus:[72,-72]};
+const OBJPOS={dragon:[0,0],baron:[0,0],nexus:[72,-72]};
 CRT.dragon={h:6};CRT.baron={h:7};
 SOULDEF.infernal={n:'Alma infernal',ic:'🔥',d:'+14% de daño y +6% de crítico.',st:{ad:.14,crit:.06},r:2};
 SOULDEF.mountain={n:'Alma de la montaña',ic:'⛰️',d:'+60 de vida y -8% de daño recibido.',st:{hp:60,dr:.08},r:2};
@@ -1605,7 +1633,7 @@ baron:e=>mkBody(e,[[new THREE.SphereGeometry(1.5,16,12),0x6a2fa0,[0,1.8,0]],[new
 nexus:e=>mkBody(e,[[new THREE.OctahedronGeometry(2.2,0),0xd0306a,[0,3.6,0],0,1],[new THREE.TorusGeometry(2.6,.12,8,40),0xff7a9a,[0,3.6,0],[Math.PI/2,0,0],1]])};
 function spawnBoss(kind){const pos=OBJPOS[kind],B=BOSS[kind],tpl=ELT[kind],keep=cannonModelTemplate;cannonModelTemplate=tpl||null;cannonMode=!!tpl;const e=makeEnemy(pos[0],pos[1],true,false);cannonMode=false;cannonModelTemplate=keep;
  const u=e.userData;u.boss=kind;u.hp=u.maxHp=Math.ceil(B.hp()*TUNE.bossHp);u.speed=B.sp;u.aT=3;u.bT=6;u.cT=10;if(!tpl){e.children.forEach(q=>{if(q!==u.shadow)q.visible=false});BBODY[kind](e)}e.scale.multiplyScalar(B.sc);enemies.push(e);bossRef=e;
- banner('⚠ '+B.n+' HA APARECIDO ⚠');ring(pos[0],pos[1],0xff5a3a,12,.9);spark(pos[0],2,pos[1],0xff9a3a,60,8,8,1.5);shake(.5);if(kind==='dragon')dragonSpawnRoar(e);else [110,98,87].forEach((f,i)=>tone(f,.5,'sawtooth',.12,.5,i*.2))}
+ banner('⚠ '+B.n+' HA APARECIDO ⚠');ring(pos[0],pos[1],0xff5a3a,12,.9);spark(pos[0],2,pos[1],0xff9a3a,60,8,8,1.5);shake(.5);if(kind==='dragon'){}else [110,98,87].forEach((f,i)=>tone(f,.5,'sawtooth',.12,.5,i*.2))}
 function globAng(e,a,dx,dz){const m=new THREE.Group();m.add(new THREE.Mesh(GG,GM),new THREE.Mesh(GH,GHM));const L=Math.hypot(dx,dz)||1,ux=dx/L,uz=dz/L,c=Math.cos(a),s=Math.sin(a);m.position.set(e.position.x,1.8,e.position.z);scene.add(m);globs.push({m,dx:ux*c-uz*s,dz:ux*s+uz*c,t:0})}
 function bossAI(e,u,dt){const dx=hero.position.x-e.position.x,dz=hero.position.z-e.position.z,L=Math.hypot(dx,dz)||1,ux=dx/L,uz=dz/L,ph=u.hp<u.maxHp*.5?.7:1,x=e.position.x,z=e.position.z;u.aT-=dt;u.bT-=dt;u.cT-=dt;const rot=(a)=>[ux*Math.cos(a)-uz*Math.sin(a),ux*Math.sin(a)+uz*Math.cos(a)];
  if(u.boss==='dragon'){if(u.aT<=0){u.aT=4.5*ph;tgLine(x,z,ux,uz,16,4,.9,30,0xff7a2a);if(ph<1){for(const a of[.38,-.38]){const r=rot(a);tgLine(x,z,r[0],r[1],16,4,.9,30,0xff7a2a)}}tone(110,.5,'sawtooth',.1,.5)}
@@ -1675,18 +1703,66 @@ function baronQuake(e){
  shake(1.5);noise(1.5,.22,670,100);[64,49,39].forEach((f,i)=>tone(f,1.5,'sawtooth',.15,.8,i*.12));
  banner('👁 ¡EL BARÓN SALE DEL SUELO! ¡TODO EL MAPA LEVANTADO 2 s!');
 }
+
+const BOSS_MID={x:0,z:0};
+const bossIntroDecor=[];
+const floorBoss=(x,z)=>getRiftGroundHeight(x,z)??0;
+function discardBossIntroDecor(obj){
+ if(!obj)return;
+ scene.remove(obj);
+ const i=bossIntroDecor.indexOf(obj);if(i!==-1)bossIntroDecor.splice(i,1);
+ obj.traverse(o=>{if(o.geometry&&o.geometry.dispose)o.geometry.dispose();if(o.material){const mats=Array.isArray(o.material)?o.material:[o.material];for(const m of mats)if(m&&m.dispose)m.dispose()}});
+}
+function makeDragonGroundShadow(){
+ const sh=new THREE.Mesh(new THREE.CircleGeometry(3.4,36),
+  new THREE.MeshBasicMaterial({color:0x0b050d,transparent:true,opacity:.28,depthWrite:false,side:THREE.DoubleSide}));
+ sh.rotation.x=-Math.PI/2;scene.add(sh);bossIntroDecor.push(sh);return sh;
+}
+function makeBaronFissures(){
+ const g=new THREE.Group(),y=floorBoss(0,0)+.22;g.position.set(0,y,0);
+ const m=new THREE.MeshBasicMaterial({color:0x7b25db,transparent:true,opacity:.35,depthWrite:false,side:THREE.DoubleSide,blending:THREE.AdditiveBlending,toneMapped:false});
+ const disc=new THREE.Mesh(new THREE.CircleGeometry(5.1,40),m);disc.rotation.x=-Math.PI/2;g.add(disc);
+ const ringMat=new THREE.MeshBasicMaterial({color:0xdc82ff,transparent:true,opacity:.85,depthWrite:false,side:THREE.DoubleSide,toneMapped:false});
+ const ringObj=new THREE.Mesh(new THREE.RingGeometry(4.9,5.2,48),ringMat);ringObj.rotation.x=-Math.PI/2;ringObj.position.y=.025;g.add(ringObj);
+ const verts=[];
+ for(let i=0;i<11;i++){
+  const a=i*Math.PI*2/11,rr=4.2+(i%3)*.4,b=5.4+(i%4)*.8;
+  verts.push(0,.04,0,Math.cos(a)*rr,.04,Math.sin(a)*rr);
+  verts.push(Math.cos(a)*rr,.04,Math.sin(a)*rr,Math.cos(a+.2)*b,.04,Math.sin(a+.2)*b);
+ }
+ const linesGeo=new THREE.BufferGeometry();linesGeo.setAttribute('position',new THREE.Float32BufferAttribute(verts,3));
+ g.add(new THREE.LineSegments(linesGeo,new THREE.LineBasicMaterial({color:0xea90ff,transparent:true,opacity:.92,depthTest:true,toneMapped:false})));
+ scene.add(g);bossIntroDecor.push(g);return g;
+}
 const _spawnBossModel=spawnBoss;
-spawnBoss=function(kind){_spawnBossModel(kind);const e=bossRef;if(!e||e.userData.boss!==kind)return;
+spawnBoss=function(kind){
+ _spawnBossModel(kind);
+ const e=bossRef;if(!e||e.userData.boss!==kind)return;
  const u=e.userData;u.bossAnimLockT=0;u.bossAction=null;
  if(kind==='dragon'){
   e.visible=true;
-  e.traverse(o=>{if(o.isSkinnedMesh||o.isMesh){o.frustumCulled=false;o.visible=true;const ms=Array.isArray(o.material)?o.material:[o.material];for(const m of ms)if(m){m.side=THREE.DoubleSide;m.transparent=false;m.opacity=1;m.needsUpdate=true}}});
-  playBossClip(e,/^SRU_Dragon_elder_Spawn\.anm$/i,4.5);
+  e.traverse(o=>{if(o.isMesh){o.visible=true;o.frustumCulled=false}});
+  const startX=-43,startZ=-38;
+  e.position.set(startX,floorBoss(startX,startZ)+25,startZ);
+  e.rotation.y=Math.atan2(-startX,-startZ);
+  const shadow=makeDragonGroundShadow();
+  u.bossIntro={kind:'dragon',time:0,duration:5.2,shadow,landing:false};
+  if(!playBossClip(e,/^SRU_Dragon_flying_Run\.anm$/i,4))playBossClip(e,/^Run$/i,4);
+  banner('🐉 ¡EL DRAGÓN ANCESTRAL SOBREVUELA LA GRIETA!');
+  noise(.7,.11,650,170);tone(145,.7,'sawtooth',.10,.7);
+ }else if(kind==='baron'){
+  e.position.set(0,floorBoss(0,0)-10,0);
+  e.visible=true;
+  const portal=makeBaronFissures();
+  u.bossIntro={kind:'baron',time:0,stage:'rumble',portal,pulse:0};
+  banner('👁 ¡ALGO ENORME SE MUEVE BAJO LA TIERRA!');
+  ring(0,0,0x9935f0,9,1.2);
+  noise(1.1,.14,390,55);tone(60,1.2,'sawtooth',.18,.55);
  }
- if(kind==='baron'){playBossClip(e,/^SRU_Baron_spawn\.anm$|^Spawn_Crawlout$/i,3.2);baronQuake(e)}
 };
+
 const _bossAIModel=bossAI;
-bossAI=function(e,u,dt){if(u.bossAnimLockT>0||e===baronRising)return;
+bossAI=function(e,u,dt){if(u.bossIntro||u.bossAnimLockT>0||e===baronRising)return;
  const doA=u.aT<=dt,doB=u.bT<=dt;
  _bossAIModel(e,u,dt);
  if((u.boss==='dragon'||u.boss==='baron')&&doA)bossAttackClip(e,false);
@@ -1700,24 +1776,104 @@ function bossDeathClip(e){const u=e.userData,tpl=ELT[u.boss];if(!tpl)return;
 }
 const _bossOnKill=onKill;
 onKill=function(e){if(e.userData.boss)bossDeathClip(e);_bossOnKill(e)};
+
 const _bossReset=reset;
-reset=function(){baronLiftT=baronRiseT=0;baronRising=null;for(const b of bossDeathVisuals)scene.remove(b.g);bossDeathVisuals.length=0;_bossReset()};
+reset=function(){
+ baronLiftT=baronRiseT=0;baronRising=null;
+ for(const d of [...bossIntroDecor])discardBossIntroDecor(d);
+ for(const b of bossDeathVisuals)scene.remove(b.g);bossDeathVisuals.length=0;
+ _bossReset();
+};
 const _bossUpdate=update;
 update=function(dt){
- if(running&&!paused&&!gameOver){for(const e of enemies)if(e.userData.boss)e.userData.bossAnimLockT=Math.max(0,(e.userData.bossAnimLockT||0)-dt)}
+ if(running&&!paused&&!gameOver){
+  for(const e of enemies)if(e.userData.boss)e.userData.bossAnimLockT=Math.max(0,(e.userData.bossAnimLockT||0)-dt);
+ }
  _bossUpdate(dt);
  if(!running||paused||gameOver)return;
- if(baronLiftT>0){baronLiftT=Math.max(0,baronLiftT-dt);const lift=4.8*Math.max(0,Math.sin(Math.PI*(2-baronLiftT)/2));
-  hero.position.y=(getRiftGroundHeight(hero.position.x,hero.position.z)??0)+lift;
-  for(const e of enemies){if(e!==baronRising)e.position.y=(getRiftGroundHeight(e.position.x,e.position.z)??0)+lift}
-  if(baronLiftT===0)for(const e of enemies){if(e!==baronRising)e.position.y=getRiftGroundHeight(e.position.x,e.position.z)??0}
+ for(const e of [...enemies]){
+  const u=e.userData,intro=u.bossIntro;
+  if(!intro)continue;
+  if(intro.kind==='dragon'){
+   intro.time=Math.min(intro.duration,intro.time+dt);
+   const t=intro.time/intro.duration;
+   const flyEase=1-Math.pow(1-t,1.5);
+   const x=-43*(1-flyEase),z=-38*(1-flyEase);
+   // Gran recorrido aéreo, descenso progresivo y aterrizaje real en el centro.
+   const height=22*Math.pow(1-t,1.4)+(t<.8?3:0);
+   e.position.set(x,floorBoss(x,z)+height,z);
+   e.rotation.y=Math.atan2(-x,-z);
+   e.rotation.z=Math.sin(t*Math.PI)*-.12;
+   if(intro.shadow){
+    intro.shadow.position.set(x,floorBoss(x,z)+.15,z);
+    intro.shadow.material.opacity=.13+.35*t;
+    intro.shadow.scale.setScalar(.55+t*1.2);
+   }
+   if(t>=.75&&!intro.landing){
+    intro.landing=true;
+    playBossClip(e,/^Landing$/i,1.25);
+    ring(0,0,0xff6935,9,1);
+    banner('🐉 ¡EL ANCESTRAL SE ABALANZA SOBRE EL CENTRO!');
+   }
+   if(u.visualMixer)u.visualMixer.update(dt);
+   if(t>=1){
+    e.position.set(0,floorBoss(0,0),0);e.rotation.z=0;
+    discardBossIntroDecor(intro.shadow);
+    u.bossIntro=null;u.roarStunT=0;
+    dragonSpawnRoar(e); // solo al tocar tierra
+   }
+  }else if(intro.kind==='baron'){
+   intro.time+=dt;
+   if(intro.stage==='rumble'){
+    // Grietas y pulsaciones anuncian al monstruo antes de verlo.
+    intro.pulse+=dt;
+    const g=intro.portal;
+    if(g){
+     g.scale.setScalar(.86+.24*Math.sin(intro.time*8)**2+.12*intro.time);
+     g.rotation.y=intro.time*.25;
+     const disc=g.children[0],edge=g.children[1];
+     disc.material.opacity=.25+.23*Math.sin(intro.time*9)**2;
+     edge.material.opacity=.55+.35*Math.sin(intro.time*12)**2;
+    }
+    if(intro.pulse>=.36){
+     intro.pulse=0;
+     ring(0,0,0xa74cf4,5.5+Math.random()*3,.65);
+     spark(0,.5,0,0xb65aff,9,6,2,.65);
+     shake(.13);
+    }
+    if(intro.time>=2.2){
+     intro.stage='rising';intro.time=0;
+     if(intro.portal)discardBossIntroDecor(intro.portal);
+     intro.portal=null;
+     playBossClip(e,/^SRU_Baron_spawn\.anm$|^Spawn_Crawlout$/i,3.2);
+     baronQuake(e); // comienza la onda global de 2 s cuando revienta el suelo
+    }
+   }else if(intro.stage==='rising'&&baronRiseT<=0){
+    u.roarStunT=0;u.bossIntro=null;
+    e.position.set(0,floorBoss(0,0),0);
+   }
+   if(u.visualMixer)u.visualMixer.update(dt);
+  }
+ }
+ if(baronLiftT>0){
+  baronLiftT=Math.max(0,baronLiftT-dt);
+  const lift=5.5*Math.max(0,Math.sin(Math.PI*(2-baronLiftT)/2));
+  hero.position.y=floorBoss(hero.position.x,hero.position.z)+lift;
+  for(const e of enemies)if(e!==baronRising && !(e.userData.bossIntro&&e.userData.bossIntro.kind==='dragon'))
+   e.position.y=floorBoss(e.position.x,e.position.z)+lift;
+  if(baronLiftT===0)for(const e of enemies)if(e!==baronRising && !(e.userData.bossIntro&&e.userData.bossIntro.kind==='dragon'))
+   e.position.y=floorBoss(e.position.x,e.position.z);
  }
  if(baronRiseT>0&&baronRising&&enemies.includes(baronRising)){
-  baronRiseT=Math.max(0,baronRiseT-dt);const t=1-baronRiseT/3.2,ease=1-Math.pow(1-t,3);
-  baronRising.position.y=(getRiftGroundHeight(baronRising.position.x,baronRising.position.z)??0)-8*(1-ease);
-  if(baronRising.userData.visualMixer&&baronRising.userData.roarStunT>0)baronRising.userData.visualMixer.update(dt);
+  baronRiseT=Math.max(0,baronRiseT-dt);
+  const t=1-baronRiseT/3.2,ease=1-Math.pow(1-t,3);
+  baronRising.position.y=floorBoss(baronRising.position.x,baronRising.position.z)-8*(1-ease);
   if(baronRiseT===0)baronRising=null;
  }
- for(let i=bossDeathVisuals.length-1;i>=0;i--){const g=bossDeathVisuals[i];g.t-=dt;g.mixer.update(dt);if(g.t<=0){scene.remove(g.g);bossDeathVisuals.splice(i,1)}}
+ for(let i=bossDeathVisuals.length-1;i>=0;i--){
+  const g=bossDeathVisuals[i];g.t-=dt;g.mixer.update(dt);
+  if(g.t<=0){scene.remove(g.g);bossDeathVisuals.splice(i,1)}
+ }
 };
+
 </script></body></html>
