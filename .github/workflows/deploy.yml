@@ -1,0 +1,48 @@
+name: Publicar Vayne Survivors
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Obtener el codigo
+        uses: actions/checkout@v4
+      - name: Incorporar los modelos 3D originales
+        run: |
+          git clone --depth 1 https://github.com/zeepzeep1/Vayne-Survivors.git /tmp/vayne-source
+          find /tmp/vayne-source -maxdepth 1 -type f -name '*.glb' -exec cp -f {} ./ \;
+          mkdir -p glbsx
+          if [ -d /tmp/vayne-source/glbsx ]; then
+            find /tmp/vayne-source/glbsx -maxdepth 1 -type f -name '*.glb' -exec cp -f {} glbsx/ \;
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- '*.glb' 'glbsx/*.glb'
+          if ! git diff --cached --quiet; then
+            git commit -m "Incorporar modelos 3D para Vayne Survivors"
+            git push origin HEAD:main
+          fi
+      - name: Configurar GitHub Pages
+        uses: actions/configure-pages@v5
+      - name: Subir los archivos a Pages
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: .
+      - name: Publicar
+        id: deployment
+        uses: actions/deploy-pages@v4
