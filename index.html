@@ -1816,20 +1816,33 @@ function bossDeathClip(e){
  scene.add(e); // el kill genérico la quita, pero ahora ESTE cuerpo pasa a ser el cadáver
  e.visible=true;
  e.traverse(o=>{if(o.isMesh){o.frustumCulled=false}});
- const animDur=kind==='baron'?5.2:5.6;
+ // Sólo Nashor: bisagra colocada en la base, no en el centro de la malla.
+ // El cuerpo conserva sus transformaciones actuales mientras lo emparentamos.
+ let baronAnchor=null,baronTilt=null;
+ if(kind==='baron'){
+  const ground=floorBoss(e.position.x,e.position.z);
+  baronAnchor=new THREE.Group();
+  baronAnchor.position.set(e.position.x,ground,e.position.z);
+  baronAnchor.rotation.y=e.rotation.y;
+  baronTilt=new THREE.Group();baronAnchor.add(baronTilt);
+  scene.add(baronAnchor);
+  baronTilt.attach(e);
+ }
+ const animDur=kind==='baron'?3.35:5.6;
  if(mixer&&clip){
   const death=mixer.clipAction(clip);
   const playing=Object.values(u.visualActions||{}).concat(u.bossAction||[]).filter(a=>a&&a!==death&&a.isRunning());
   death.reset();death.enabled=true;death.setEffectiveWeight(1);
   death.setLoop(THREE.LoopOnce,1);death.clampWhenFinished=true;
-  death.setEffectiveTimeScale(clip.duration/animDur);
-  death.fadeIn(.4).play();
+  death.setEffectiveTimeScale(kind==='baron'?1:clip.duration/animDur);
+  death.fadeIn(kind==='baron'?.22:.4).play();
   for(const a of playing)a.fadeOut(.4);
   u.bossAction=death;
  }
  bossDeathVisuals.push({
   g:e,mixer,clip,kind,age:0,animDur,holdAge:0,holdDur:10,
   ground:floorBoss(e.position.x,e.position.z),settleTimer:0,impact:false,
+  baronAnchor,baronTilt,deathFrozen:false,deathAction:kind==='baron'&&mixer&&clip?mixer.clipAction(clip):null,
   tempVec:new THREE.Vector3()
  });
 }
@@ -1857,32 +1870,53 @@ function stepBossDeathVisuals(dt){
  for(let i=bossDeathVisuals.length-1;i>=0;i--){
   const b=bossDeathVisuals[i];
   b.age=Math.min(b.animDur,b.age+dt);
-  if(b.mixer&&b.age<=b.animDur)b.mixer.update(dt);
-  // La animación "Death" del Barón YA flexiona el torso y la cabeza.
-  // NO hay que girar el jefe entero 70 grados sobre su eje: eso retuerce el cadáver.
-  if(b.kind==='baron'&&!b.impact&&b.age>=b.animDur*.74){
-   b.impact=true;
-   ring(b.g.position.x,b.g.position.z,0x8952bd,8,.85);
-   spark(b.g.position.x,.85,b.g.position.z,0xb999e8,32,5,4,1.2);
-   shake(.35);noise(.45,.08,340,80);tone(58,.48,'sawtooth',.12,.48);
+  if(b.kind==='baron'){
+   // Primer gesto: Death nativo. Se congela antes de las torsiones finales
+   // porque el GLB termina erguido, no tumbado en el suelo.
+   if(!b.deathFrozen){
+    if(b.mixer)b.mixer.update(Math.min(dt,Math.max(0,1.10-(b.age-dt))));
+    if(b.age>=1.10){
+     b.deathFrozen=true;
+     if(b.deathAction)b.deathAction.paused=true;
+    }
+   }
+   // Desplome físico hacia delante, girando sobre la base del cuerpo:
+   // no hay salto brusco ni rotación desde el centro de su torso.
+   const fallStart=.62,fallEnd=2.76;
+   const x=THREE.MathUtils.clamp((b.age-fallStart)/(fallEnd-fallStart),0,1);
+   const smooth=x*x*(3-2*x);
+   if(b.baronTilt)b.baronTilt.rotation.x=1.46*smooth;
+   if(!b.impact&&x>=.93){
+    b.impact=true;
+    ring(b.g.position.x,b.g.position.z,0x8952bd,9,.9);
+    spark(b.g.position.x,1,b.g.position.z,0xb999e8,42,6,4,1.4);
+    shake(.55);noise(.6,.11,340,65);tone(58,.55,'sawtooth',.14,.46);
+   }
+  }else if(b.mixer&&b.age<b.animDur){
+   b.mixer.update(dt);
   }
   // El cuerpo se coloca por la posición REAL de sus vértices skinned,
   // y la corrección se mantiene hasta que el clip llega a su postura final.
   b.settleTimer-=dt;
   if(b.settleTimer<=0||b.age===b.animDur){
-   b.settleTimer=b.age===b.animDur?.18:.12;
+   b.settleTimer=b.age===b.animDur?.18:(b.kind==='baron'?.04:.12);
    const bottom=actualBossBottom(b);
    if(bottom!==null){
     const diff=b.ground+.04-bottom;
     if(Math.abs(diff)<60){
-     // Aterriza con fluidez; al terminar el clip, queda apoyado exactamente.
-     b.g.position.y+=diff*(b.age>=b.animDur?1:Math.min(1,dt*8));
+     // Nashor se apoya moviendo la bisagra, NO el esqueleto.
+     // Dragón: se conserva el ajuste ya validado visualmente.
+     const amount=diff*(b.age>=b.animDur?1:Math.min(1,dt*(b.kind==='baron'?11:8)));
+     if(b.kind==='baron'&&b.baronAnchor)b.baronAnchor.position.y+=amount;
+     else b.g.position.y+=amount;
     }
    }
   }
   if(b.age>=b.animDur&&!paused)b.holdAge+=dt;
   if(b.holdAge>=b.holdDur){
-   scene.remove(b.g);bossDeathVisuals.splice(i,1);
+   if(b.baronAnchor)scene.remove(b.baronAnchor);
+   else scene.remove(b.g);
+   bossDeathVisuals.splice(i,1);
   }
  }
 }
@@ -1901,7 +1935,7 @@ reset=function(){
  baronLiftT=baronRiseT=0;baronRising=null;
  for(const d of [...bossIntroDecor])discardBossIntroDecor(d);
  burrowTraces.length=0;
- for(const b of bossDeathVisuals)scene.remove(b.g);bossDeathVisuals.length=0;
+ for(const b of bossDeathVisuals)scene.remove(b.baronAnchor||b.g);bossDeathVisuals.length=0;
  _bossReset();
 };
 const _bossUpdate=update;
