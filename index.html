@@ -50,7 +50,7 @@ document.addEventListener('pointermove',e=>{
  if(!cameraDragging||e.pointerId!==cameraDragPointer)return;
  if(!running||paused||gameOver||!(e.buttons&(cameraDragButton===2?2:1))){stopCameraDrag();return}
  cameraYaw-=(e.clientX-lastPointerX)*.006;
- cameraPitch=THREE.MathUtils.clamp(cameraPitch+(e.clientY-lastPointerY)*.004,.32,1.12);
+ cameraPitch=THREE.MathUtils.clamp(cameraPitch+(e.clientY-lastPointerY)*.004,.045,1.46);
  lastPointerX=e.clientX;lastPointerY=e.clientY;e.preventDefault();
 });
 window.addEventListener('pointerup',e=>{if(e.pointerId===cameraDragPointer)stopCameraDrag()},true);
@@ -587,7 +587,7 @@ for(const shot of [...enemyShots]){shot.life-=dt;shot.mesh.position.addScaledVec
 for(const o of [...orbs]){if(o.gem){o.gem.rotation.y+=dt*2.4;o.gem.position.y=.57+Math.sin(elapsed*4+o.mesh.position.x)*.12;o.core.position.y=o.gem.position.y;}o.mesh.position.y=(getRiftGroundHeight(o.mesh.position.x,o.mesh.position.z)??0);const d=o.mesh.position.distanceTo(hero.position.clone().add(new THREE.Vector3(0,.5,0)));if(d<pickupRange){const dir=hero.position.clone().add(new THREE.Vector3(0,.5,0)).sub(o.mesh.position).normalize();o.mesh.position.addScaledVector(dir,dt*7)}if(d<.9){addXP(o.value);scene.remove(o.mesh);orbs.splice(orbs.indexOf(o),1)}}
 for(const fx of [...effects]){fx.life-=dt;const t=1-fx.life/fx.max;fx.mesh.scale.setScalar(1+t*3);fx.mesh.material.opacity=Math.max(0,fx.life/fx.max);if(fx.life<=0){scene.remove(fx.mesh);effects.splice(effects.indexOf(fx),1)}}
 // Camera follows player with smooth lag
-const horizontal=Math.cos(cameraPitch)*cameraDistance;const desired=new THREE.Vector3(hero.position.x+Math.sin(cameraYaw)*horizontal,hero.position.y+Math.sin(cameraPitch)*cameraDistance,hero.position.z+Math.cos(cameraYaw)*horizontal);camera.position.copy(desired);camera.lookAt(hero.position.x,hero.position.y,hero.position.z);updateHUD()}
+const horizontal=Math.cos(cameraPitch)*cameraDistance;const desired=new THREE.Vector3(hero.position.x+Math.sin(cameraYaw)*horizontal,hero.position.y+1.8+Math.sin(cameraPitch)*cameraDistance,hero.position.z+Math.cos(cameraYaw)*horizontal);camera.position.copy(desired);camera.lookAt(hero.position.x,hero.position.y+1.45,hero.position.z);updateHUD()}
 function endGame(){gameOver=true;paused=true;$('finalstats').textContent=`Has sobrevivido ${Math.floor(elapsed/60)} min ${Math.floor(elapsed%60)} s y eliminado ${kills} minions. Has alcanzado el nivel ${level}.`;$('dead').classList.remove('hidden')}
 function loop(now){requestAnimationFrame(loop);const dt=Math.min((now-last)/1000,.04);last=now;if(running)update(dt);riftDiagClock+=dt;updateRiftDiag();renderer.render(scene,camera)}requestAnimationFrame(loop);
 window.addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);renderer.setPixelRatio(Math.min(devicePixelRatio,1.7))});
@@ -1389,46 +1389,23 @@ const _sh2=slowHero;slowHero=function(f,d){_sh2(f,d*(1-SLOWRES))};
 /* ---------- nuevos enemigos: lobo, raptor y cangrejo ---------- */
 const CRT={wolf:{h:1.3,hp:()=>5+wave*1.1,sp:3.4},raptor:{h:1.7,hp:()=>8+wave*1.6,sp:2.7},crab:{h:1.4,hp:()=>36+wave*6,sp:1.2}};
 
-function repairDragonBoneClips(model,clips){
- // El archivo Elder mezcla animaciones ABSOLUTAS con animaciones DELTA.
- // Attack1, Spell1 y algunas miradas empiezan con traslaciones cero y
- // quaterniones identidad: deben componerse con la pose de reposo del hueso.
- const bones=new Map();
- model.traverse(o=>{if(o.isBone&&o.name)bones.set(o.name,o)});
- const tmp=new THREE.Quaternion(),rest=new THREE.Quaternion();
- let converted=0;
+function stableDragonClips(clips){
+ // Analizado en el GLB: Attack1, Spell1, Flying_Spell1 y lookat_* contienen
+ // 100+ huesos con posición (0,0,0) y rotación identidad, no una pose completa.
+ // Se bloquean en vez de intentar recuperar deltas incompatibles.
+ // Además congelamos la escala de CADA hueso: ChestScale baja a 0.57 en Spell1.
+ const good=[],ignored=[];
  for(const clip of clips){
-  let totalPos=0,zeroPos=0,totalQuat=0,identityQuat=0;
-  for(const tr of clip.tracks){
-   const dot=tr.name.lastIndexOf('.');if(dot<0)continue;
-   const bone=bones.get(tr.name.slice(0,dot));if(!bone)continue;
-   const prop=tr.name.slice(dot+1),v=tr.values;
-   if(prop==='position'&&bone.position.length()>.07&&v.length>=3){
-    totalPos++;if(Math.hypot(v[0],v[1],v[2])<.035)zeroPos++;
-   }else if(prop==='quaternion'&&v.length>=4){
-    totalQuat++;if(Math.hypot(v[0],v[1],v[2],v[3]-1)<.07)identityQuat++;
-   }
-  }
-  // No convertir clips de vuelo/idle originales: sus pistas ya son absolutas.
-  if(totalPos<30||totalQuat<30||zeroPos/totalPos<.72||identityQuat/totalQuat<.72)continue;
-  for(const tr of clip.tracks){
-   const dot=tr.name.lastIndexOf('.');if(dot<0)continue;
-   const bone=bones.get(tr.name.slice(0,dot));if(!bone)continue;
-   const prop=tr.name.slice(dot+1),v=tr.values;
-   if(prop==='position'){
-    for(let i=0;i<v.length;i+=3){v[i]+=bone.position.x;v[i+1]+=bone.position.y;v[i+2]+=bone.position.z}
-   }else if(prop==='quaternion'){
-    rest.copy(bone.quaternion);
-    for(let i=0;i<v.length;i+=4){
-     tmp.fromArray(v,i).normalize().premultiply(rest).normalize();
-     tmp.toArray(v,i);
-    }
-   }
-  }
-  converted++;
-  console.info('[Ancestral] Corregida animación delta:',clip.name);
+  const pos=clip.tracks.filter(tr=>tr.name.endsWith('.position')&&tr.values.length>=3);
+  const collapsed=pos.length>60 && pos.filter(tr=>Math.hypot(tr.values[0],tr.values[1],tr.values[2])<.04).length/pos.length>.70;
+  const banned=/^(Attack1|Spell1|SRU_Dragon_Flying_Spell1\.anm|SRU_dragon_idle_lookat_(0|L45|R45)\.anm)$/i.test(clip.name);
+  if(collapsed||banned){ignored.push(clip.name);continue}
+  // El movimiento de alas y patas se conserva, pero NINGUNA animación escala huesos.
+  clip.tracks=clip.tracks.filter(tr=>!tr.name.endsWith('.scale'));
+  good.push(clip);
  }
- console.info('[Ancestral] Pistas de huesos reparadas:',converted,'/',clips.length);
+ console.info('[Ancestral] Clips seguros:',good.length,'| Clips defectuosos excluidos:',ignored);
+ return good;
 }
 
 function loadCreature(kind,file){if(!file)return;const st=$(kind+'ModelStatus');if(st)st.textContent='Cargando…';gltfLoader.load(URL.createObjectURL(file),gltf=>{const model=gltf.scene;model.traverse(o=>{if(o.isMesh){o.castShadow=false;o.receiveShadow=true;if(o.material)o.material.side=THREE.FrontSide}});let b=new THREE.Box3().setFromObject(model);
@@ -1446,7 +1423,7 @@ function loadCreature(kind,file){if(!file)return;const st=$(kind+'ModelStatus');
  }
  const s=b.getSize(new THREE.Vector3()),c=b.getCenter(new THREE.Vector3()),k=CRT[kind].h/Math.max(s.x,s.y,s.z,.001);
  model.scale.setScalar(k);model.position.set(-c.x*k,-b.min.y*k,-c.z*k);
- if(kind==='dragon')repairDragonBoneClips(model,gltf.animations||[]);ELT[kind]={scene:model,animations:gltf.animations||[],file:file.name};if(st){st.textContent=file.name+' cargado ('+ELT[kind].animations.length+' clips). Se usará en los próximos que salgan.';st.style.color='#70e5d1'}},undefined,err=>{console.error(err);if(st){st.textContent='No se pudo cargar.';st.style.color='#ff8b9b'}})}
+ const clips=kind==='dragon'?stableDragonClips(gltf.animations||[]):(gltf.animations||[]);ELT[kind]={scene:model,animations:clips,file:file.name};if(st){st.textContent=file.name+' cargado ('+ELT[kind].animations.length+' clips). Se usará en los próximos que salgan.';st.style.color='#70e5d1'}},undefined,err=>{console.error(err);if(st){st.textContent='No se pudo cargar.';st.style.color='#ff8b9b'}})}
 for(const k of['wolf','raptor','crab']){const B=$('load'+k[0].toUpperCase()+k.slice(1)+'Model'),I=$(k+'ModelFile');if(B&&I){B.addEventListener('click',()=>I.click());I.addEventListener('change',e=>loadCreature(k,e.target.files&&e.target.files[0]))}}
 window.addEventListener('load',()=>{for(const[kind,file]of[['wolf','lobo.glb'],['raptor','raptor.glb'],['crab','cangrejo.glb']])fetch('./'+file).then(r=>{if(!r.ok)throw 0;return r.blob()}).then(b=>loadCreature(kind,new File([b],file,{type:'model/gltf-binary'}))).catch(()=>{})});
 function mkBody(e,parts){const g=new THREE.Group();for(const[geo,col,p,r,em]of parts){const m=new THREE.Mesh(geo,em?new THREE.MeshBasicMaterial({color:col,toneMapped:false}):matTerrain(col));m.position.set(...p);if(r)m.rotation.set(...r);g.add(m)}e.add(g)}
@@ -1675,7 +1652,7 @@ function arrowObj(x,z,label){const el=$('objArrow');_p.set(x,1.5,z).project(came
 function pre13(dt){const t=elapsed;
  if(eclipseT>0&&(eclipseT-=dt)<=0)applyStats();if(baronT>0&&(baronT-=dt)<=0)applyStats();if(surgeT>0)surgeT-=dt;
  for(const o of OBJ){
-  const lead=o.k==='dragon'?10:o.k==='baron'?8:0;
+  const lead=o.k==='dragon'?20:o.k==='baron'?20:0;
   if(lead&&!o.preSpawn&&t>=o.t-lead){
    o.preSpawn=true;o.w=1;spawnBoss(o.k);
   }
@@ -1702,7 +1679,7 @@ const _ok2=onKill;onKill=function(e){_ok2(e);const u=e.userData;if(u.boss)bossDe
 let baronLiftT=0,baronRiseT=0,baronRising=null;
 const bossDeathVisuals=[];
 const _bossResetMatch=resetMatch;
-resetMatch=function(){_bossResetMatch();for(const o of OBJ){if(o.k==='dragon'){o.t=20;o.w=1}else if(o.k==='baron')o.t=80}document.querySelectorAll('.tlm[data-k]').forEach(m=>{const o=OBJ.find(x=>x.k===m.dataset.k);if(o)m.style.left=o.t/T_END*100+'%'})};
+resetMatch=function(){_bossResetMatch();for(const o of OBJ){if(o.k==='dragon'){o.t=30;o.w=1}else if(o.k==='baron')o.t=80}document.querySelectorAll('.tlm[data-k]').forEach(m=>{const o=OBJ.find(x=>x.k===m.dataset.k);if(o)m.style.left=o.t/T_END*100+'%'})};
 const _bossSetEnemyAnim=setEnemyAnim;
 setEnemyAnim=function(u,state){if(u.bossAnimLockT>0)return;_bossSetEnemyAnim(u,state)};
 function playBossClip(e,matcher,duration){
@@ -1713,7 +1690,7 @@ function playBossClip(e,matcher,duration){
  action.setEffectiveTimeScale(clip.duration/Math.max(.01,duration));action.play();u.bossAction=action;u.bossAnimLockT=duration;return true;
 }
 function bossAttackClip(e,special=false){const u=e.userData;if(u.bossAnimLockT>0)return;
- const re=u.boss==='dragon'?(special?/^Spell[12]$/i:/^Attack1$/i):(special?/^Spell[23]_Base$|^SRU_Baron_spell[23]\.anm$/i:/^SRU_Baron_attack1\.anm$|^Attack2$/i);
+ const re=u.boss==='dragon'?(special?/^Spell2$/i:/^SRU_dragon_idle_aggro1\.anm$/i):(special?/^Spell[23]_Base$|^SRU_Baron_spell[23]\.anm$/i:/^SRU_Baron_attack1\.anm$|^Attack2$/i);
  playBossClip(e,re,1.55);
 }
 function baronQuake(e){
@@ -1729,6 +1706,7 @@ function baronQuake(e){
 const BOSS_MID={x:0,z:0};
 const bossIntroDecor=[];
 const burrowTraces=[];
+const dragonSkyRoute=new THREE.CatmullRomCurve3([new THREE.Vector3(-68,0,-60),new THREE.Vector3(-64,0,51),new THREE.Vector3(3,0,67),new THREE.Vector3(68,0,48),new THREE.Vector3(61,0,-57),new THREE.Vector3(22,0,-17)],false,'catmullrom',.5);
 const baronTunnel=new THREE.CatmullRomCurve3([new THREE.Vector3(-36,0,-23),new THREE.Vector3(-27,0,14),new THREE.Vector3(-12,0,-14),new THREE.Vector3(13,0,12),new THREE.Vector3(0,0,0)],false,'catmullrom',.42);
 const floorBoss=(x,z)=>getRiftGroundHeight(x,z)??0;
 function discardBossIntroDecor(obj){
@@ -1793,16 +1771,17 @@ spawnBoss=function(kind){
  if(kind==='dragon'){
   e.visible=true;
   e.traverse(o=>{if(o.isMesh){o.visible=true;o.frustumCulled=false}});
-  const startX=-12,startZ=-22;
-  e.position.set(startX,floorBoss(startX,startZ)+16,startZ);
+  u.dragonBoneScales=[];e.traverse(o=>{if(o.isBone)u.dragonBoneScales.push({bone:o,rest:o.scale.clone()})});
+  const startX=-68,startZ=-60;
+  e.position.set(startX,floorBoss(startX,startZ)+18,startZ);
   e.rotation.y=Math.atan2(-startX,-startZ);
   const shadow=makeDragonGroundShadow();
-  u.bossIntro={kind:'dragon',time:0,duration:10,shadow,landing:false};
+  u.bossIntro={kind:'dragon',time:0,duration:20,shadow,landing:false,trailClock:0};
   // Mantiene un ciclo de aleteo natural durante todo el vuelo.
-  if(playBossClip(e,/^SRU_Dragon_flying_Run\.anm$|^Run$/i,9)){
+  if(playBossClip(e,/^SRU_Dragon_flying_Run\.anm$|^Run$/i,18)){
    u.bossAction.setLoop(THREE.LoopRepeat,Infinity);
    u.bossAction.setEffectiveTimeScale(1);
-   u.bossAnimLockT=9;
+   u.bossAnimLockT=18;
   }
   banner('🐉 ¡EL DRAGÓN ANCESTRAL SOBREVUELA LA GRIETA!');
   noise(.7,.11,650,170);tone(145,.7,'sawtooth',.10,.7);
@@ -1845,47 +1824,61 @@ reset=function(){
 const _bossUpdate=update;
 update=function(dt){
  if(running&&!paused&&!gameOver){
-  for(const e of enemies)if(e.userData.boss)e.userData.bossAnimLockT=Math.max(0,(e.userData.bossAnimLockT||0)-dt);
+  for(const e of enemies)if(e.userData.boss){
+   const u=e.userData,was=u.bossAnimLockT||0;
+   u.bossAnimLockT=Math.max(0,was-dt);
+   if(was>0&&u.bossAnimLockT===0&&!u.bossIntro&&u.bossAction){
+    u.bossAction.stop();u.bossAction=null;u.visualState='';
+   }
+  }
  }
  _bossUpdate(dt);
  if(!running||paused||gameOver)return;
+ // Defensa final: una animación nunca puede reducir la longitud/escala de los huesos.
+ for(const e of enemies)if(e.userData.dragonBoneScales)
+  for(const o of e.userData.dragonBoneScales)o.bone.scale.copy(o.rest);
  for(const e of [...enemies]){
   const u=e.userData,intro=u.bossIntro;
   if(!intro)continue;
   if(intro.kind==='dragon'){
    intro.time=Math.min(intro.duration,intro.time+dt);
-   const tt=intro.time,flightEnd=8.6;
-   let x,z,height,angle;
+   const tt=intro.time,flightEnd=17.5;
+   let x,z,height,dirX,dirZ;
    if(tt<flightEnd){
-    const f=tt/flightEnd;
-    angle=-2.1+f*5.2;
-    const radius=24-11*f;
-    x=Math.cos(angle)*radius;z=Math.sin(angle)*radius;
-    height=16+1.8*Math.sin(f*Math.PI*2);
+    // Ruta amplia por los cuatro cuadrantes; altura moderada para verse desde lejos.
+    const f=Math.min(1,tt/flightEnd),pt=dragonSkyRoute.getPoint(f),next=dragonSkyRoute.getPoint(Math.min(1,f+.008));
+    x=pt.x;z=pt.z;dirX=next.x-x;dirZ=next.z-z;
+    height=17+3.5*Math.sin(Math.PI*f);
    }else{
-    // Desde los 8,6 s se lanza hacia el suelo del centro.
+    // Dos segundos y medio de picado hacia el centro, SIN cambiar la escala del jefe.
     const t=Math.min(1,(tt-flightEnd)/(intro.duration-flightEnd));
-    const eased=t*t*(3-2*t),a=-2.1+5.2;
-    x=Math.cos(a)*13*(1-eased);z=Math.sin(a)*13*(1-eased);
-    height=16*(1-eased);
+    const ease=t*t*(3-2*t),last=dragonSkyRoute.getPoint(1);
+    x=last.x*(1-ease);z=last.z*(1-ease);
+    height=17*(1-ease);
+    dirX=-last.x;dirZ=-last.z;
     if(!intro.landing){
      intro.landing=true;
-     playBossClip(e,/^Landing$/i,1.4);
-     ring(0,0,0xff6935,9,1);
-     banner('🐉 ¡EL ANCESTRAL DESCIENDE SOBRE EL CENTRO!');
+     playBossClip(e,/^Landing$/i,2.5);
+     ring(0,0,0xff6935,10,1);
+     banner('🐉 ¡EL ANCESTRAL SE LANZA SOBRE EL CENTRO!');
     }
    }
    e.position.set(x,floorBoss(x,z)+height,z);
-   const nx=Math.cos(Math.min(flightEnd,tt)/flightEnd*5.2-2.1+.09)*(24-11*Math.min(flightEnd,tt)/flightEnd);
-   const nz=Math.sin(Math.min(flightEnd,tt)/flightEnd*5.2-2.1+.09)*(24-11*Math.min(flightEnd,tt)/flightEnd);
-   e.rotation.y=Math.atan2(nx-x,nz-z);
-   e.rotation.z=tt<flightEnd?-.13*Math.sin(tt*.9):0;
+   if(Math.hypot(dirX,dirZ)>.001)e.rotation.y=Math.atan2(dirX,dirZ);
+   e.rotation.z=tt<flightEnd?-.09*Math.sin(tt*.6):0;
+   // Estela incandescente visible incluso con la cámara casi a ras de suelo.
+   intro.trailClock+=dt;
+   if(intro.trailClock>=.16){
+    intro.trailClock=0;
+    spark(x,height+floorBoss(x,z),z,0xffc078,5,3,3,1.1);
+   }
    if(intro.shadow){
     intro.shadow.position.set(x,floorBoss(x,z)+.15,z);
-    intro.shadow.material.opacity=.12+.4*(1-height/20);
-    intro.shadow.scale.setScalar(.6+(1-height/20)*1.1);
+    intro.shadow.material.opacity=.18+.35*(1-height/21);
+    intro.shadow.scale.setScalar(.6+(1-height/21)*1.25);
    }
    if(u.visualMixer)u.visualMixer.update(dt);
+   if(u.dragonBoneScales)for(const o of u.dragonBoneScales)o.bone.scale.copy(o.rest);
    if(tt>=intro.duration){
     e.position.set(0,floorBoss(0,0),0);e.rotation.z=0;
     discardBossIntroDecor(intro.shadow);
@@ -1895,7 +1888,7 @@ update=function(dt){
   }else if(intro.kind==='baron'){
    intro.time+=dt;
    if(intro.stage==='tunnel'){
-    const pct=Math.min(1,intro.time/8);
+    const pct=Math.min(1,intro.time/20);
     const p=baronTunnel.getPoint(pct),x=p.x,z=p.z;
     e.position.set(x,floorBoss(x,z)-25,z);
     const g=intro.portal;
