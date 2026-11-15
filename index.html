@@ -1272,7 +1272,7 @@ update=function(dt){
 /* ======================= v12: runas, caminos, rangos, objetos de LoL y director de enemigos ======================= */
 Object.assign(TUNE,{cap:0});
 const BASE={damage:1,fireRate:.68,moveSpeed:6.1,maxHp:100,crit:.05,pick:2.8},cl12=THREE.MathUtils.clamp;
-const RK={q:1,e:1,r:0,p:1},TL={},GL={},FL={},PATHS=[],PREP={rune:null,minors:[],sums:['flash','ghost']},lq=[];
+const RK={q:1,e:1,r:0,p:1},TL={},GL={},FL={},PATHS=[],PREP={rune:null,minors:[],sums:['flash','ghost'],devDamage:false},lq=[];
 let bootsId=null,gaUsed=false,actId=null,actCD=0,spellCD=0,nightCD=0,conq=0,conqT=0,lt=0,ltT=0,elecN=0,elecT=0,elecCD=0,souls=0,phaseN=0,phaseT=0,phaseCD=0,cometT=8,hasteT=0,hasteF=1,regenBuffT=0,shotE=0,prepSel=null;
 const later=(t,f)=>lq.push({t,f});
 /* ---------- objetos: componentes, legendarios y botas con recetas (como en LoL) ---------- */
@@ -1352,7 +1352,7 @@ function calcStats(){const S={ad:0,as:0,crit:0,ms:0,hp:0,ls:0,dr:0,cdr:0,regen:0
  for(const m of PREP.minors){const M=MINORS[m];if(!M)continue;add(M.st);if(M.fl)F[M.fl]=(F[M.fl]||0)+(M.flv||1)}
  for(const id of SOULS12){const o=SOULDEF[id];if(o){add(o.st);if(o.fl)F[o.fl]=(F[o.fl]||0)+1}}for(const id of PACT)add(PACTST[id]);if(baronT>0)add({ad:.2,as:.2});S.ad+=trN.tr1*.05;S.as+=trN.tr2*.04;S.hp+=trN.tr3*15;S.proc+=.3*(RK.p-1);return{S,F}}
 function applyStats(){const{S,F}=calcStats();SS=S;for(const k in FL)delete FL[k];Object.assign(FL,F);
- damage=BASE.damage*(1+S.ad);fireRate=Math.max(.18,BASE.fireRate/(1+S.as));critChance=Math.min(.85,BASE.crit+S.crit);
+ damage=BASE.damage*(1+S.ad)+(PREP.devDamage?1000:0);fireRate=Math.max(.18,BASE.fireRate/(1+S.as));critChance=Math.min(.85,BASE.crit+S.crit);
  moveSpeed=BASE.moveSpeed*(1+S.ms)*(ghostT>0?1.45:1)*(slowT>0?slowF:1)*(hasteT>0?hasteF:1);
  const nm=BASE.maxHp+S.hp;if(nm!==maxHp){hp=Math.max(1,Math.min(nm,hp+Math.max(0,nm-maxHp)));maxHp=nm}
  damageReduction=Math.min(.6,S.dr);lifeSteal=Math.min(.2,S.ls);regen=S.regen;pickupRange=BASE.pick+S.pick;extraBolts=Math.min(6,Math.floor(S.bolts));
@@ -1497,15 +1497,19 @@ renderShop=function(){if(!stock)newStock();const sel=[],row=(icon,n,d,p,dis,fn)=
 #inventory span[data-cd]:not([data-cd=""])::after{content:attr(data-cd);position:absolute;inset:0;background:#000b;color:#fff;font:800 13px Inter,sans-serif;display:grid;place-items:center}#inventory span.act{box-shadow:0 0 0 1px #f5cc70}`;document.head.appendChild(st);
  const w=document.createElement('div');w.id='prep';document.body.appendChild(w)}
 const prepEl=$('prep'),icR=(p,fb)=>`<img src="https://ddragon.leagueoflegends.com/cdn/img/perk-images/Styles/${p}.png" alt="" data-fb="${fb}" onerror="this.outerHTML='<span class=fb>'+this.dataset.fb+'</span>'">`;
-function openPrep(){prepSel={rune:PREP.rune,minors:[...PREP.minors],sums:[...PREP.sums]};prepEl.style.display='flex';renderPrep()}
+function openPrep(){prepSel={rune:PREP.rune,minors:[...PREP.minors],sums:[...PREP.sums],devDamage:!!PREP.devDamage};prepEl.style.display='flex';renderPrep()}
 function renderPrep(){const s=prepSel,good=s.rune&&s.minors.length===2&&s.sums.length===2;
  let h=`<div class="box"><h2>Prepara tu cacería</h2><div style="font-size:12px;color:#9fb0c2">Elige tu runa clave, 2 runas menores y 2 hechizos de invocador (teclas F y G). En la partida elegirás un camino de talentos (nivel 2) y subirás Q, E, R y la pasiva con puntos de habilidad.</div><h3>RUNA CLAVE</h3><div class="grid">`;
  for(const k in KEYS12){const r=KEYS12[k];h+=`<button class="it${s.rune===k?' on':''}" data-t="r" data-k="${k}"><span class="ic">${icR(r.ic[0],r.ic[1])}</span><div><b>${r.n}</b><span>${r.d}</span></div></button>`}
  h+='</div><h3>RUNAS MENORES (elige 2)</h3><div class="grid">';for(const k in MINORS){const r=MINORS[k];h+=`<button class="it${s.minors.includes(k)?' on':''}" data-t="m" data-k="${k}"><span class="ic"><span class="fb">${r.ic}</span></span><div><b>${r.n}</b><span>${r.d}</span></div></button>`}
  h+='</div><h3>HECHIZOS DE INVOCADOR (elige 2)</h3><div class="grid">';for(const k in SUMS){const r=SUMS[k];h+=`<button class="it${s.sums.includes(k)?' on':''}" data-t="s" data-k="${k}"><span class="ic">${ic('spell',r.f,r.ic)}</span><div><b>${r.n}</b><span>${r.d} Recarga ${r.cd} s.</span></div></button>`}
- h+=`</div><button class="it" id="prepGo" style="margin-top:12px;justify-content:center"${good?'':' disabled'}><b>⚔ ENTRAR EN LA GRIETA</b></button></div>`;prepEl.innerHTML=h;
+ h+=`</div><h3>🛠️ MODO DESARROLLADOR</h3><label style="display:flex;align-items:center;gap:12px;padding:13px;border:1px solid #58718d;border-radius:11px;cursor:pointer;background:#142535">
+ <input id="devDamageOption" type="checkbox" ${s.devDamage?'checked':''} style="width:21px;height:21px;accent-color:#89e6b2;flex:none">
+ <span><b>Pruebas: +1000 de daño</b><span style="display:block;color:#aebdd1;font-size:12px;margin-top:4px">Sólo para esta partida. Desactívalo para jugar normalmente.</span></span></label>
+ <button class="it" id="prepGo" style="margin-top:12px;justify-content:center"${good?'':' disabled'}><b>⚔ ENTRAR EN LA GRIETA</b></button></div>`;prepEl.innerHTML=h;
+ $('devDamageOption').addEventListener('change',e=>{s.devDamage=e.target.checked});
  prepEl.querySelectorAll('.it[data-k]').forEach(b=>b.onclick=()=>{const k=b.dataset.k,t=b.dataset.t;if(t==='r')s.rune=k;else{const a=t==='m'?s.minors:s.sums,i=a.indexOf(k);if(i>=0)a.splice(i,1);else{if(a.length>=2)a.shift();a.push(k)}}renderPrep()});
- $('prepGo').onclick=()=>{if(!good)return;PREP.rune=s.rune;PREP.minors=[...s.minors];PREP.sums=[...s.sums];prepEl.style.display='none';reset()}}
+ $('prepGo').onclick=()=>{if(!good)return;PREP.rune=s.rune;PREP.minors=[...s.minors];PREP.sums=[...s.sums];PREP.devDamage=!!s.devDamage;prepEl.style.display='none';reset()}}
 $('play').onclick=openPrep;$('again').onclick=openPrep;
 /* ---------- interfaz: rangos, hechizos F/G, inventario con botas y panel de stats ---------- */
 for(const[i,key]of[[4,'F'],[5,'G']]){if(!$('slot'+i)){const d=document.createElement('div');d.className='skill utility slotx emp';d.id='slot'+i;d.innerHTML=`<span class="keycap">${key}</span><b></b><div class="cdx"></div>`;$('slot0').before(d)}}
@@ -1813,36 +1817,26 @@ function bossDeathClip(e){
  const visual=e.children.find(c=>c.isGroup&&c!==u.shadow);
  const mixer=u.visualMixer,clip=tpl?.animations.find(a=>/^Death$/i.test(a.name||''))||null;
  if(u.shadow)u.shadow.visible=false;
- scene.add(e); // el kill genérico la quita, pero ahora ESTE cuerpo pasa a ser el cadáver
+ if(kind==='baron')scene.attach(e);else scene.add(e); // preserves world transform on Baron old pivot
  e.visible=true;
  e.traverse(o=>{if(o.isMesh){o.frustumCulled=false}});
- // Sólo Nashor: bisagra colocada en la base, no en el centro de la malla.
- // El cuerpo conserva sus transformaciones actuales mientras lo emparentamos.
- let baronAnchor=null,baronTilt=null;
- if(kind==='baron'){
-  const ground=floorBoss(e.position.x,e.position.z);
-  baronAnchor=new THREE.Group();
-  baronAnchor.position.set(e.position.x,ground,e.position.z);
-  baronAnchor.rotation.y=e.rotation.y;
-  baronTilt=new THREE.Group();baronAnchor.add(baronTilt);
-  scene.add(baronAnchor);
-  baronTilt.attach(e);
- }
- const animDur=kind==='baron'?3.35:5.6;
+ // El clip Death de Nashor dura ~5.03 s y ya anima el cuerpo y la cabeza.
+ // No se congela ni se sustituye por una rotación rígida del modelo.
+ const animDur=kind==='baron'?(clip?.duration||5.03):5.6;
  if(mixer&&clip){
   const death=mixer.clipAction(clip);
   const playing=Object.values(u.visualActions||{}).concat(u.bossAction||[]).filter(a=>a&&a!==death&&a.isRunning());
   death.reset();death.enabled=true;death.setEffectiveWeight(1);
   death.setLoop(THREE.LoopOnce,1);death.clampWhenFinished=true;
-  death.setEffectiveTimeScale(kind==='baron'?1:clip.duration/animDur);
-  death.fadeIn(kind==='baron'?.22:.4).play();
+  death.setEffectiveTimeScale(clip.duration/animDur);
+  death.fadeIn(.32).play();
   for(const a of playing)a.fadeOut(.4);
   u.bossAction=death;
  }
  bossDeathVisuals.push({
   g:e,mixer,clip,kind,age:0,animDur,holdAge:0,holdDur:10,
   ground:floorBoss(e.position.x,e.position.z),settleTimer:0,impact:false,
-  baronAnchor,baronTilt,deathFrozen:false,deathAction:kind==='baron'&&mixer&&clip?mixer.clipAction(clip):null,
+  baronHead:kind==='baron'?(e.getObjectByName('Head2')||e.getObjectByName('Head1')):null,
   tempVec:new THREE.Vector3()
  });
 }
@@ -1871,51 +1865,47 @@ function stepBossDeathVisuals(dt){
   const b=bossDeathVisuals[i];
   b.age=Math.min(b.animDur,b.age+dt);
   if(b.kind==='baron'){
-   // Primer gesto: Death nativo. Se congela antes de las torsiones finales
-   // porque el GLB termina erguido, no tumbado en el suelo.
-   if(!b.deathFrozen){
-    if(b.mixer)b.mixer.update(Math.min(dt,Math.max(0,1.10-(b.age-dt))));
-    if(b.age>=1.10){
-     b.deathFrozen=true;
-     if(b.deathAction)b.deathAction.paused=true;
+   // Se reproduce Death COMPLETO: primero se contrae, después el cuello
+   // y las cabezas se hunden hacia el terreno, como su muerte en LoL.
+   if(b.mixer&&b.age<=b.animDur)b.mixer.update(dt);
+   if(b.baronHead){
+    b.g.updateMatrixWorld(true);b.baronHead.getWorldPosition(b.tempVec);
+    // Nashor está arraigado bajo tierra: NO debe volcar como un tronco.
+    // La cabeza descendiente termina a nivel de suelo y su cuerpo queda tumbado/hundido.
+    if(b.age>=2.25){
+     const headHeight=b.tempVec.y;
+     const wanted=b.ground+.85;
+     const correction=THREE.MathUtils.clamp(wanted-headHeight,-7,1);
+     b.g.position.y+=correction*Math.min(1,dt*(b.age>=b.animDur?9:2.1));
     }
-   }
-   // Desplome físico hacia delante, girando sobre la base del cuerpo:
-   // no hay salto brusco ni rotación desde el centro de su torso.
-   const fallStart=.62,fallEnd=2.76;
-   const x=THREE.MathUtils.clamp((b.age-fallStart)/(fallEnd-fallStart),0,1);
-   const smooth=x*x*(3-2*x);
-   if(b.baronTilt)b.baronTilt.rotation.x=1.46*smooth;
-   if(!b.impact&&x>=.93){
-    b.impact=true;
-    ring(b.g.position.x,b.g.position.z,0x8952bd,9,.9);
-    spark(b.g.position.x,1,b.g.position.z,0xb999e8,42,6,4,1.4);
-    shake(.55);noise(.6,.11,340,65);tone(58,.55,'sawtooth',.14,.46);
+    if(!b.impact&&(b.tempVec.y<=b.ground+1.65||b.age>=b.animDur*.87)){
+     b.impact=true;
+     ring(b.g.position.x,b.g.position.z,0x8952bd,9,.9);
+     spark(b.g.position.x,1,b.g.position.z,0xb999e8,42,6,4,1.4);
+     shake(.5);noise(.6,.1,340,65);tone(58,.55,'sawtooth',.14,.46);
+    }
    }
   }else if(b.mixer&&b.age<b.animDur){
    b.mixer.update(dt);
   }
   // El cuerpo se coloca por la posición REAL de sus vértices skinned,
   // y la corrección se mantiene hasta que el clip llega a su postura final.
-  b.settleTimer-=dt;
-  if(b.settleTimer<=0||b.age===b.animDur){
-   b.settleTimer=b.age===b.animDur?.18:(b.kind==='baron'?.04:.12);
-   const bottom=actualBossBottom(b);
-   if(bottom!==null){
-    const diff=b.ground+.04-bottom;
-    if(Math.abs(diff)<60){
-     // Nashor se apoya moviendo la bisagra, NO el esqueleto.
-     // Dragón: se conserva el ajuste ya validado visualmente.
-     const amount=diff*(b.age>=b.animDur?1:Math.min(1,dt*(b.kind==='baron'?11:8)));
-     if(b.kind==='baron'&&b.baronAnchor)b.baronAnchor.position.y+=amount;
-     else b.g.position.y+=amount;
+  // La alineación precisa del Dragón se mantiene intacta.
+  // No aplicarla a Nashor: cancelaría su hundimiento natural tras morir.
+  if(b.kind!=='baron'){
+   b.settleTimer-=dt;
+   if(b.settleTimer<=0||b.age===b.animDur){
+    b.settleTimer=b.age===b.animDur?.18:.12;
+    const bottom=actualBossBottom(b);
+    if(bottom!==null){
+     const diff=b.ground+.04-bottom;
+     if(Math.abs(diff)<60)b.g.position.y+=diff*(b.age>=b.animDur?1:Math.min(1,dt*8));
     }
    }
   }
   if(b.age>=b.animDur&&!paused)b.holdAge+=dt;
   if(b.holdAge>=b.holdDur){
-   if(b.baronAnchor)scene.remove(b.baronAnchor);
-   else scene.remove(b.g);
+   scene.remove(b.g);
    bossDeathVisuals.splice(i,1);
   }
  }
@@ -1935,7 +1925,7 @@ reset=function(){
  baronLiftT=baronRiseT=0;baronRising=null;
  for(const d of [...bossIntroDecor])discardBossIntroDecor(d);
  burrowTraces.length=0;
- for(const b of bossDeathVisuals)scene.remove(b.baronAnchor||b.g);bossDeathVisuals.length=0;
+ for(const b of bossDeathVisuals)scene.remove(b.g);bossDeathVisuals.length=0;
  _bossReset();
 };
 const _bossUpdate=update;
