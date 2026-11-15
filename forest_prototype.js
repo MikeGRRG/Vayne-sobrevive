@@ -1,16 +1,17 @@
-// Bosque del Río Antiguo — prototipo tridimensional jugable para Vayne Survivors.
+// Bosque del Río Antiguo — prototipo 3D v2 con materiales, formas orgánicas y acabado fotorrealista para Vayne Survivors.
 // Generación determinista, geometría instanciada y sin descargas externas.
 export function createForestPrototype(THREE, scene, sunlight, legacyProcedural, oldV2Scene, obstacleList) {
   for (const o of legacyProcedural) o.visible = false;
   for (const o of [...scene.children]) if (!oldV2Scene.has(o) && o !== sunlight.target) o.visible = false;
   obstacleList.length = 0;
-  const root = new THREE.Group();root.name='Bosque del Rio Antiguo - prototipo v1';scene.add(root);
-  scene.background = new THREE.Color(0x819889);
-  scene.fog = new THREE.FogExp2(0x879d8c, 0.0047);
-  sunlight.color.set(0xffedd1);sunlight.intensity=3.5;
-  sunlight.shadow.bias=-0.00015;
-  sunlight.shadow.normalBias=0.035;
-  scene.add(new THREE.HemisphereLight(0xe3f7eb,0x35473c,1.25));
+  const root = new THREE.Group();root.name='Bosque del Rio Antiguo - prototipo v2 realista';scene.add(root);
+  scene.background = new THREE.Color(0x9cafa0);
+  scene.fog = new THREE.FogExp2(0x9baf9f,0.00425);
+  sunlight.color.set(0xffefd8);sunlight.intensity=3.0;
+  sunlight.shadow.bias=-0.00014;
+  sunlight.shadow.normalBias=0.043;
+  sunlight.shadow.radius=2.2;
+  scene.add(new THREE.HemisphereLight(0xe1eee3,0x3b4b3d,.98));
 
   let seed=8364107;
   const rnd=()=>{seed=(Math.imul(seed,1664525)+1013904223)>>>0;return seed/4294967296};
@@ -51,33 +52,74 @@ export function createForestPrototype(THREE, scene, sunlight, legacyProcedural, 
     return height(x,z);
   };
   const mat=(color,roughness=1,extra={})=>new THREE.MeshStandardMaterial({color,roughness,...extra});
-  const bark=mat(0x705039,.96,{flatShading:false});
-  const foliage=mat(0xffffff,.92,{side:THREE.DoubleSide});
-  const grassMat=mat(0xffffff,.96,{side:THREE.DoubleSide});
-  const rockMat=mat(0xffffff,1,{flatShading:true});
-  const stone=mat(0x898d79,.94,{flatShading:false});
-  const moss=mat(0x597e4b,.96);
-  const dust=mat(0xc3b99d,1);
-  const darkSoil=mat(0x4a513d,1);
-  function makeTexture(size) {
-    const c=document.createElement('canvas');c.width=c.height=size;
-    const ctx=c.getContext('2d'),id=ctx.createImageData(size,size);
-    for(let j=0;j<size;j++)for(let i=0;i<size;i++){
-      const coarse=noise(i/68,j/68),fine=noise(i/11,j/11),grain=hash(i,j);
-      const v=clamp((coarse-.5)*47+(fine-.5)*24+(grain-.5)*19,-52,52),k=(j*size+i)*4;
-      id.data[k]=clamp(94+v,0,255);id.data[k+1]=clamp(101+v*.85,0,255);
-      id.data[k+2]=clamp(76+v*.68,0,255);id.data[k+3]=255;
+  const bark=mat(0x74573d,.97);
+  const foliage=mat(0xffffff,.82,{side:THREE.DoubleSide});
+  const grassMat=mat(0xffffff,.88,{side:THREE.DoubleSide});
+  const rockMat=mat(0xffffff,.93);
+  const stone=mat(0xcac9bc,.93);
+  const moss=mat(0x72915d,.94);
+  const dust=mat(0xd0c4aa,1);
+  const darkSoil=mat(0x514c3c,.98);
+  // Albedo, normal map y mapa de rugosidad del mismo terreno.
+  // Una textura generada y filtrada, con detalle fino incluso a ras del suelo.
+  function makePBRTextures(size,stoneMode=false){
+    const canvas=document.createElement('canvas');canvas.width=canvas.height=size;
+    const normalCanvas=document.createElement('canvas');normalCanvas.width=normalCanvas.height=size;
+    const roughCanvas=document.createElement('canvas');roughCanvas.width=roughCanvas.height=size;
+    const a=canvas.getContext('2d'),n=normalCanvas.getContext('2d'),r=roughCanvas.getContext('2d');
+    const pixels=a.createImageData(size,size),normals=n.createImageData(size,size),roughness=r.createImageData(size,size);
+    const heights=new Float32Array(size*size),m=size-1;
+    for(let y=0;y<size;y++)for(let x=0;x<size;x++){
+      const i=y*size+x,j=i*4;
+      const low=noise(x/(stoneMode?95:110),y/(stoneMode?95:110));
+      const mid=noise(x/19,y/19),fine=noise(x/4.4,y/4.4);
+      const grain=hash(x*2.17,y*3.71);
+      const v=(low-.5)*59+(mid-.5)*27+(fine-.5)*15+(grain-.5)*13;
+      const crack=stoneMode&&low<.385?-.12:0;
+      const shade=v+(stoneMode?crack*44:0);
+      heights[i]=clamp(.5+v/145,0,1);
+      const color=stoneMode?[145,149,135]:[112,111,79];
+      pixels.data[j]=clamp(color[0]+shade,0,255);
+      pixels.data[j+1]=clamp(color[1]+shade*(stoneMode?.9:1.13),0,255);
+      pixels.data[j+2]=clamp(color[2]+shade*(stoneMode?.81:.72),0,255);
+      pixels.data[j+3]=255;
+      const rr=clamp(stoneMode?224+(mid-.5)*24:219+(mid-.5)*34,160,255);
+      roughness.data[j]=rr;roughness.data[j+1]=rr;roughness.data[j+2]=rr;roughness.data[j+3]=255;
     }
-    ctx.putImageData(id,0,0);
-    const texture=new THREE.CanvasTexture(c);
-    texture.wrapS=texture.wrapT=THREE.RepeatWrapping;
-    texture.repeat.set(14,14);
-    texture.colorSpace=THREE.SRGBColorSpace;
-    texture.anisotropy=8;
-    return texture;
+    for(let y=0;y<size;y++)for(let x=0;x<size;x++){
+      const i=y*size+x,j=i*4,h=heights[i];
+      const hl=heights[y*size+(x===0?m:x-1)],hr=heights[y*size+(x===m?0:x+1)];
+      const hu=heights[(y===0?m:y-1)*size+x],hd=heights[(y===m?0:y+1)*size+x];
+      const nx=(hl-hr)*2.1,nz=(hu-hd)*2.1,len=Math.hypot(nx,nz,1);
+      normals.data[j]=Math.round(127.5+127.5*nx/len);
+      normals.data[j+1]=Math.round(127.5+127.5*nz/len);
+      normals.data[j+2]=Math.round(127.5+127.5/len);
+      normals.data[j+3]=255;
+    }
+    a.putImageData(pixels,0,0);n.putImageData(normals,0,0);r.putImageData(roughness,0,0);
+    const make=(src,isColor)=>{
+      const tex=new THREE.CanvasTexture(src);
+      tex.wrapS=tex.wrapT=THREE.RepeatWrapping;
+      tex.repeat.set(stoneMode?2.2:14,stoneMode?2.2:14);
+      tex.magFilter=THREE.LinearFilter;
+      tex.minFilter=THREE.LinearMipmapLinearFilter;
+      tex.generateMipmaps=true;
+      tex.anisotropy=16;
+      if(isColor)tex.colorSpace=THREE.SRGBColorSpace;
+      return tex;
+    };
+    return {albedo:make(canvas,true),normal:make(normalCanvas,false),rough:make(roughCanvas,false)};
   }
-  const baseTexture=makeTexture(768);
-  const floorGeo=new THREE.PlaneGeometry(190,190,190,190);
+  const dirtMaps=makePBRTextures(1024,false);
+  const stoneMaps=makePBRTextures(512,true);
+  rockMat.map=stoneMaps.albedo;rockMat.normalMap=stoneMaps.normal;rockMat.normalScale.set(.28,.28);
+  rockMat.roughnessMap=stoneMaps.rough;
+  stone.map=stoneMaps.albedo;stone.normalMap=stoneMaps.normal;stone.normalScale.set(.25,.25);
+  stone.roughnessMap=stoneMaps.rough;
+  dust.map=stoneMaps.albedo;dust.normalMap=stoneMaps.normal;dust.normalScale.set(.18,.18);
+  moss.map=stoneMaps.albedo;moss.normalMap=stoneMaps.normal;moss.normalScale.set(.14,.14);
+  const baseTexture=dirtMaps.albedo;
+  const floorGeo=new THREE.PlaneGeometry(190,190,280,280);
   floorGeo.rotateX(-Math.PI/2);
   const p=floorGeo.attributes.position,colors=new Float32Array(p.count*3);
   for(let i=0;i<p.count;i++){
@@ -93,12 +135,12 @@ export function createForestPrototype(THREE, scene, sunlight, legacyProcedural, 
   }
   floorGeo.setAttribute('color',new THREE.BufferAttribute(colors,3));floorGeo.computeVertexNormals();
   const floor=new THREE.Mesh(floorGeo,new THREE.MeshStandardMaterial({
-    map:baseTexture,bumpMap:baseTexture,bumpScale:.095,vertexColors:true,roughness:1
+    map:baseTexture,normalMap:dirtMaps.normal,normalScale:new THREE.Vector2(.34,.34),roughnessMap:dirtMaps.rough,vertexColors:true,roughness:1
   }));
   floor.name='Bosque: suelo caminable';floor.receiveShadow=true;root.add(floor);
 
   const waterCoords=[],uv=[],indices=[];
-  const sections=255,across=12;
+  const sections=360,across=18;
   for(let i=0;i<=sections;i++){
     const z=-95+i*190/sections,mid=riverX(z),w=riverWidth(z)/2;
     for(let j=0;j<=across;j++){
@@ -111,26 +153,45 @@ export function createForestPrototype(THREE, scene, sunlight, legacyProcedural, 
   const wGeo=new THREE.BufferGeometry();wGeo.setAttribute('position',new THREE.Float32BufferAttribute(waterCoords,3));
   wGeo.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));wGeo.setIndex(indices);wGeo.computeVertexNormals();
   const waterTexture=(()=>{
-    const c=document.createElement('canvas');c.width=256;c.height=512;const cx=c.getContext('2d');
-    cx.fillStyle='#91c4bb';cx.fillRect(0,0,256,512);
-    for(let i=0;i<240;i++){
-      const y=rnd()*512,x=rnd()*256,w=rand(15,130);
-      cx.strokeStyle=i%3?'rgba(217,251,236,.12)':'rgba(26,75,76,.12)';
-      cx.lineWidth=rand(.4,2.8);cx.beginPath();cx.moveTo(x,y);
-      cx.bezierCurveTo(x+w*.25,y-rand(0,5),x+w*.6,y+rand(0,5),x+w,y);cx.stroke();
+    const c=document.createElement('canvas');c.width=512;c.height=1024;
+    const cx=c.getContext('2d');
+    cx.fillStyle='#a5d5cc';cx.fillRect(0,0,c.width,c.height);
+    for(let i=0;i<1350;i++){
+      const y=rnd()*c.height,x=rnd()*c.width,w=rand(22,220);
+      cx.strokeStyle=i%5?'rgba(235,255,244,.10)':'rgba(22,92,94,.085)';
+      cx.lineWidth=rand(.4,2.4);cx.beginPath();cx.moveTo(x,y);
+      cx.bezierCurveTo(x+w*.25,y-rand(0,6),x+w*.62,y+rand(0,6),x+w,y);cx.stroke();
     }
     const t=new THREE.CanvasTexture(c);t.wrapS=t.wrapT=THREE.RepeatWrapping;
-    t.repeat.set(1,1);t.colorSpace=THREE.SRGBColorSpace;return t;
+    t.colorSpace=THREE.SRGBColorSpace;t.anisotropy=16;t.minFilter=THREE.LinearMipmapLinearFilter;return t;
+  })();
+  const waterNormal=(()=>{
+    const c=document.createElement('canvas');c.width=256;c.height=512;
+    const ct=c.getContext('2d'),img=ct.createImageData(c.width,c.height);
+    const wave=(x,y)=>Math.sin(y*.075+Math.sin(x*.028)*1.9)*.22+Math.sin(y*.19-x*.054)*.1+Math.sin(y*.036+x*.097)*.15;
+    for(let y=0;y<512;y++)for(let x=0;x<256;x++){
+      const u=(y*256+x)*4,nx=(wave(x-1,y)-wave(x+1,y))*.8,ny=(wave(x,y-1)-wave(x,y+1))*.8;
+      const inv=1/Math.hypot(nx,ny,1);
+      img.data[u]=127.5+127.5*nx*inv;img.data[u+1]=127.5+127.5*ny*inv;
+      img.data[u+2]=127.5+127.5*inv;img.data[u+3]=255;
+    }
+    ct.putImageData(img,0,0);
+    const t=new THREE.CanvasTexture(c);t.wrapS=t.wrapT=THREE.RepeatWrapping;
+    t.anisotropy=16;t.minFilter=THREE.LinearMipmapLinearFilter;return t;
   })();
   const water=new THREE.Mesh(wGeo,new THREE.MeshPhysicalMaterial({
-    color:0x72cec7,map:waterTexture,transparent:true,opacity:.86,
-    metalness:.05,roughness:.15,clearcoat:.8,clearcoatRoughness:.13,
+    color:0x8ac7c3,map:waterTexture,normalMap:waterNormal,
+    normalScale:new THREE.Vector2(.72,.72),
+    transparent:true,opacity:.82,metalness:0,roughness:.11,
+    clearcoat:1,clearcoatRoughness:.065,
     side:THREE.DoubleSide,depthWrite:false
   }));
-  water.renderOrder=2;water.name='Rio animado';root.add(water);
+  wGeo.attributes.position.setUsage(THREE.DynamicDrawUsage);
+  water.renderOrder=2;water.name='Rio animado - ondas suaves';root.add(water);
+  let waterRippleClock=0,waterTime=0;
 
   const foamArr=[],banks=[],riverPebbles=[];
-  for(let i=0;i<320;i++){
+  for(let i=0;i<460;i++){
     const z=rand(-83,83),side=rnd()<.5?-1:1,center=riverX(z),w=riverWidth(z)*.5;
     const x=center+side*rand(w+.2,w+4.6);
     if(rnd()<.48)riverPebbles.push([x,height(x,z)+.09,z,rand(.1,.6),pick([0x69776b,0x858f7b,0x777e71])]);
@@ -145,7 +206,17 @@ export function createForestPrototype(THREE, scene, sunlight, legacyProcedural, 
     arr.forEach((data,i)=>{fn(data,i,obj);obj.updateMatrix();mesh.setMatrixAt(i,obj.matrix);if(data.color!==undefined){col.set(data.color);mesh.setColorAt(i,col)}});
     mesh.instanceMatrix.needsUpdate=true;mesh.frustumCulled=false;root.add(mesh);return mesh;
   }
-  const rockG=new THREE.IcosahedronGeometry(1,1);
+  // Silueta irregular pero continua: normales de roca suavizadas, no caras triangulares visibles.
+  const rockG=new THREE.IcosahedronGeometry(1,2);
+  const rp=rockG.attributes.position,rn=rockG.attributes.normal;
+  for(let i=0;i<rp.count;i++){
+    let x=rp.getX(i),y=rp.getY(i),z=rp.getZ(i);
+    const k=1+.085*Math.sin(7*x+4*z)*Math.sin(6*y-2*x)+.05*Math.cos(13*z+3*y);
+    x*=k;y*=k;z*=k;
+    rp.setXYZ(i,x,y,z);
+    const len=Math.hypot(x,y,z)||1;rn.setXYZ(i,x/len,y/len,z/len);
+  }
+  rp.needsUpdate=true;rn.needsUpdate=true;
   const rockSet=banks.concat(riverPebbles).map(a=>({x:a[0],y:a[1],z:a[2],size:a[3],color:a[4],rotation:rand(0,6)}));
   instance(rockG,rockMat,rockSet,(a,i,o)=>{
     o.position.set(a.x,a.y,a.z);o.rotation.set(.2*Math.sin(a.rotation),a.rotation,.25*Math.sin(a.rotation*2));
@@ -164,7 +235,7 @@ export function createForestPrototype(THREE, scene, sunlight, legacyProcedural, 
     if(Math.hypot(x,z)<6)continue;
     paving.push({x,y:height(x,z)+.025,z,rot:rand(-.16,.16),w:rand(.45,1.55),d:rand(.45,1.35),color:pick([0x9e9a82,0x777a69,0xb0a890,0x8d927d])});
   }
-  instance(new THREE.BoxGeometry(1,.07,1),rockMat,paving,(a,i,o)=>{
+  instance(new THREE.BoxGeometry(1,.07,1,2,1,2),rockMat,paving,(a,i,o)=>{
     o.position.set(a.x,a.y,a.z);o.rotation.set(0,a.rot,0);o.scale.set(a.w,1,a.d)},false);
 
   // Vegetación con mallas de hojas reales (cruces de hojas lanceoladas), sin sprites.
@@ -237,6 +308,15 @@ export function createForestPrototype(THREE, scene, sunlight, legacyProcedural, 
     o.position.set(a.x,a.y,a.z);o.rotation.set(0,0,0);o.scale.set(a.s,a.h,a.s);
   },true);
   const canopyGeo=new THREE.IcosahedronGeometry(1,2);
+  const cp=canopyGeo.attributes.position,cn=canopyGeo.attributes.normal;
+  for(let i=0;i<cp.count;i++){
+    let x=cp.getX(i),y=cp.getY(i),z=cp.getZ(i);
+    const factor=1+.095*Math.sin(7*x+5*z)*Math.cos(8*y+4*z)+.065*Math.sin(13*x-3*y);
+    x*=factor;y*=factor;z*=factor;
+    cp.setXYZ(i,x,y,z);
+    const d=Math.hypot(x,y,z)||1;cn.setXYZ(i,x/d,y/d,z/d);
+  }
+  cp.needsUpdate=true;cn.needsUpdate=true;
   instance(canopyGeo,foliage,crownsA,(a,i,o)=>{
     o.position.set(a.x,a.y,a.z);o.rotation.set(.12,a.rot,.07);o.scale.set(a.s,a.s*.72,a.s*.9);
   });
@@ -255,7 +335,21 @@ export function createForestPrototype(THREE, scene, sunlight, legacyProcedural, 
     o.position.set(a.x,a.y,a.z);o.rotation.set(0,a.rot,0);o.scale.set(a.size*1.15,a.size*.7,a.size*.86);
   },true);
 
-  const slabGeo=new THREE.BoxGeometry(1,1,1);
+  // Losas erosionadas con esquinas biseladas. La normal se calcula desde
+  // el volumen redondeado para evitar el aspecto de cubos sin iluminación.
+  function bevelBox(radius=.14){
+    const geo=new THREE.BoxGeometry(1,1,1,4,4,4);
+    const p=geo.attributes.position,n=geo.attributes.normal,t=.5-radius;
+    for(let i=0;i<p.count;i++){
+      const x=p.getX(i),y=p.getY(i),z=p.getZ(i),
+        ix=clamp(x,-t,t),iy=clamp(y,-t,t),iz=clamp(z,-t,t);
+      const dx=x-ix,dy=y-iy,dz=z-iz,len=Math.hypot(dx,dy,dz)||1;
+      p.setXYZ(i,ix+dx/len*radius,iy+dy/len*radius,iz+dz/len*radius);
+      n.setXYZ(i,dx/len,dy/len,dz/len);
+    }
+    geo.computeBoundingSphere();return geo;
+  }
+  const slabGeo=bevelBox(.14);
   function block(x,y,z,sx,sy,sz,material=stone,rz=0) {
     const m=new THREE.Mesh(slabGeo,material);
     m.position.set(x,y,z);m.scale.set(sx,sy,sz);m.rotation.z=rz;
@@ -309,7 +403,7 @@ export function createForestPrototype(THREE, scene, sunlight, legacyProcedural, 
     block(x,y+h*.5,z,rand(.6,1.4),h,rand(.55,1.4),pick([stone,moss,darkSoil]),rand(-.07,.07));
   }
   // Fondo más luminoso, sombras y profundidad sin aumentar demasiado los draw calls.
-  const skyFill=new THREE.DirectionalLight(0xcde9da,.42);skyFill.position.set(25,30,-50);root.add(skyFill);
+  const skyFill=new THREE.DirectionalLight(0xcde9da,.35);skyFill.position.set(25,30,-50);root.add(skyFill);
 
   return {
     height:usableHeight,
@@ -322,7 +416,20 @@ export function createForestPrototype(THREE, scene, sunlight, legacyProcedural, 
       return false;
     },
     update(dt){
-      waterTexture.offset.y=(waterTexture.offset.y+dt*.018)%1;
+      waterTime+=dt;
+      waterTexture.offset.y=(waterTexture.offset.y+dt*.024)%1;
+      waterNormal.offset.y=(waterNormal.offset.y+dt*.029)%1;
+      waterNormal.offset.x=.025*Math.sin(waterTime*.27);
+      waterRippleClock+=dt;
+      if(waterRippleClock>=.085){
+        waterRippleClock=0;
+        const attr=wGeo.attributes.position;
+        for(let i=0;i<attr.count;i++){
+          const x=waterCoords[i*3],z=waterCoords[i*3+2];
+          attr.setY(i,-.47+.025*Math.sin(z*.39+waterTime*2.0)+.012*Math.sin(x*.81-z*.13+waterTime*3.1));
+        }
+        attr.needsUpdate=true;wGeo.computeVertexNormals();
+      }
     },
     root
   };
