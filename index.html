@@ -1667,12 +1667,12 @@ function pre13(dt){const t=elapsed;
  for(const c of CROSS)if(!c.d&&t>=c.t){c.d=1;boonQ.push({open:openCross})}
  if(boonQ.length&&!boonOpen)boonQ.shift().open();
  bossAlive=!!bossRef&&enemies.includes(bossRef);if(!bossAlive)bossRef=null;
- for(const e of [...enemies])if(e.userData.boss&&!(e.userData.roarStunT>0))bossAI(e,e.userData,dt);
+ for(const e of [...enemies])if(e.userData.boss&&!e.userData.bossInvulnerable&&!(e.userData.roarStunT>0))bossAI(e,e.userData,dt);
  stepTg(dt);
  /* interfaz */
  $('tl').querySelector('.tlfill').style.width=Math.min(100,t/T_END*100)+'%';document.querySelectorAll('.tlm[data-k]').forEach(n=>n.classList.toggle('done',!!OBJ.find(o=>o.k===n.dataset.k&&o.d)));
  const nx=OBJ.find(o=>!o.d),ne=EVT.find(v=>!v.d),txt=bossAlive?'':nx?`${nx.ic} ${nx.n} en ${fmt(Math.max(0,nx.t-t))}`:'';$('tl').querySelector('.tltxt').textContent=(txt?txt+'  ·  ':'')+fmt(t)+(ne&&ne.t-t<40?'  ·  ⚠ '+ne.n+' en '+Math.ceil(ne.t-t)+' s':'');
- const bb=$('bossBar');if(bossAlive){const u=bossRef.userData;bb.style.display='block';bb.querySelector('.bbn').textContent=BOSS[u.boss].n;bb.querySelector('.bbf').style.width=Math.max(0,100*u.hp/u.maxHp)+'%';arrowObj(bossRef.position.x,bossRef.position.z,BOSS[u.boss].n)}
+ const bb=$('bossBar');if(bossAlive){const u=bossRef.userData;bb.style.display='block';bb.querySelector('.bbn').textContent=BOSS[u.boss].n+(u.bossInvulnerable?' · INMUNE':'');bb.querySelector('.bbf').style.width=Math.max(0,100*u.hp/u.maxHp)+'%';arrowObj(bossRef.position.x,bossRef.position.z,BOSS[u.boss].n)}
  else{bb.style.display='none';const w=OBJ.find(o=>o.w&&!o.d);if(w)arrowObj(OBJPOS[w.k][0],OBJPOS[w.k][1],w.n);else $('objArrow').style.display='none'}}
 const _castRoar=cast;cast=function(i){if(dragonRoarStunT>0)return;return _castRoar(i)};
 const _u7=update;update=function(dt){if(running&&!paused&&!gameOver){pre13(dt);if(paused)return}_u7(dt)};
@@ -1767,11 +1767,49 @@ function tickBurrowTraces(dt){
  }
 }
 
+
+/* Jefes protegidos durante su introducción.
+   La propiedad HP intercepta TODOS los daños, incluso los golpes de área
+   y efectos que restan userData.hp directamente. */
+function beginBossSpawnProtection(e){
+ const u=e.userData;
+ if(u.boss!=='dragon'&&u.boss!=='baron')return;
+ let bossHP=u.hp;
+ u.bossInvulnerable=true;
+ Object.defineProperty(u,'hp',{
+  configurable:true,enumerable:true,
+  get(){return bossHP},
+  set(next){if(!u.bossInvulnerable&&Number.isFinite(next))bossHP=next}
+ });
+}
+function endBossSpawnProtectionIfReady(e){
+ const u=e.userData;
+ if(!u.bossInvulnerable||u.bossIntro)return;
+ if(u.boss==='dragon'&&dragonRoarStunT<=0){
+  u.bossInvulnerable=false;
+  spark(e.position.x,2,e.position.z,0xffb055,18,5,4,.7);
+ }else if(u.boss==='baron'&&baronLiftT<=0&&baronRiseT<=0){
+  u.bossInvulnerable=false;
+  spark(e.position.x,2,e.position.z,0xab79ff,20,5,4,.7);
+ }
+}
+const _damageBossGuardHurt=hurt;
+hurt=function(e,amt,st=''){
+ if(e&&e.userData&&e.userData.bossInvulnerable)return;
+ return _damageBossGuardHurt(e,amt,st);
+};
+const _damageBossGuardKill=killEnemy;
+killEnemy=function(e){
+ if(e&&e.userData&&e.userData.bossInvulnerable)return;
+ return _damageBossGuardKill(e);
+};
+
 const _spawnBossModel=spawnBoss;
 spawnBoss=function(kind){
  _spawnBossModel(kind);
  const e=bossRef;if(!e||e.userData.boss!==kind)return;
  const u=e.userData;u.bossAnimLockT=0;u.bossAction=null;
+ beginBossSpawnProtection(e);
  if(kind==='dragon'){
   e.visible=true;
   e.traverse(o=>{if(o.isMesh){o.visible=true;o.frustumCulled=false}});
@@ -1836,7 +1874,7 @@ function bossDeathClip(e){
  bossDeathVisuals.push({
   g:e,mixer,clip,kind,age:0,animDur,holdAge:0,holdDur:10,
   ground:floorBoss(e.position.x,e.position.z),settleTimer:0,impact:false,
-  baronHead:kind==='baron'?(e.getObjectByName('Head2')||e.getObjectByName('Head1')):null,
+  baronSpines:kind==='baron'?Array.from({length:11},(_,i)=>({idx:i+1,bone:e.getObjectByName('Spine'+(i+1))})).filter(v=>v.bone):null,
   tempVec:new THREE.Vector3()
  });
 }
@@ -1851,7 +1889,7 @@ function actualBossBottom(b){
   if(!o.isMesh||!o.visible||o===g.userData.shadow)return;
   const pos=o.geometry?.attributes?.position;
   if(!pos||typeof o.getVertexPosition!=='function')return;
-  const step=Math.max(1,Math.ceil(pos.count/1050));
+  const step=Math.max(1,Math.ceil(pos.count/(b.kind==='baron'?3000:1050)));
   for(let i=0;i<pos.count;i+=step){
    o.getVertexPosition(i,tmp);
    o.localToWorld(tmp);
@@ -1865,41 +1903,46 @@ function stepBossDeathVisuals(dt){
   const b=bossDeathVisuals[i];
   b.age=Math.min(b.animDur,b.age+dt);
   if(b.kind==='baron'){
-   // Se reproduce Death COMPLETO: primero se contrae, después el cuello
-   // y las cabezas se hunden hacia el terreno, como su muerte en LoL.
-   if(b.mixer&&b.age<=b.animDur)b.mixer.update(dt);
-   if(b.baronHead){
-    b.g.updateMatrixWorld(true);b.baronHead.getWorldPosition(b.tempVec);
-    // Nashor está arraigado bajo tierra: NO debe volcar como un tronco.
-    // La cabeza descendiente termina a nivel de suelo y su cuerpo queda tumbado/hundido.
-    if(b.age>=2.25){
-     const headHeight=b.tempVec.y;
-     const wanted=b.ground+.85;
-     const correction=THREE.MathUtils.clamp(wanted-headHeight,-7,0);
-     b.g.position.y+=correction*Math.min(1,dt*(b.age>=b.animDur?9:2.1));
+   // Nashor en LoL está enraizado bajo tierra y se desploma desde el cuello.
+   // El GLB Death original mueve cada vértebra por separado; reproducirlo
+   // completo y al final relajar la columna EN CADENA, no girar ni hundir
+   // el grupo entero.
+   if(b.mixer)b.mixer.update(dt);
+   const start=.55,end=b.animDur-.15;
+   const progress=THREE.MathUtils.clamp((b.age-start)/Math.max(.1,end-start),0,1);
+   const ease=progress*progress*progress*(progress*(progress*6-15)+10);
+   if(b.baronSpines){
+    for(const {idx,bone} of b.baronSpines){
+     if(idx<4)continue; // la base sigue anclada al suelo
+     const k=(idx-4)/7;
+     const weight=ease*k*k*(3-2*k); // cae la cabeza antes que la base
+     const restingHeight=.75+.35*k;
+     bone.position.y=THREE.MathUtils.lerp(bone.position.y,Math.min(bone.position.y,restingHeight),weight);
+     bone.position.z+=1.35*k*weight; // el cuello se extiende sobre el suelo
     }
-    if(!b.impact&&(b.tempVec.y<=b.ground+1.65||b.age>=b.animDur*.87)){
-     b.impact=true;
-     ring(b.g.position.x,b.g.position.z,0x8952bd,9,.9);
-     spark(b.g.position.x,1,b.g.position.z,0xb999e8,42,6,4,1.4);
-     shake(.5);noise(.6,.1,340,65);tone(58,.55,'sawtooth',.14,.46);
-    }
+   }
+   if(!b.impact&&progress>.79){
+    b.impact=true;
+    ring(b.g.position.x,b.g.position.z,0x8952bd,9,.9);
+    spark(b.g.position.x,1,b.g.position.z,0xb999e8,42,6,4,1.4);
+    shake(.45);noise(.6,.1,340,65);tone(58,.55,'sawtooth',.14,.46);
    }
   }else if(b.mixer&&b.age<b.animDur){
    b.mixer.update(dt);
   }
   // El cuerpo se coloca por la posición REAL de sus vértices skinned,
   // y la corrección se mantiene hasta que el clip llega a su postura final.
-  // La alineación precisa del Dragón se mantiene intacta.
-  // No aplicarla a Nashor: cancelaría su hundimiento natural tras morir.
-  if(b.kind!=='baron'){
-   b.settleTimer-=dt;
-   if(b.settleTimer<=0||b.age===b.animDur){
-    b.settleTimer=b.age===b.animDur?.18:.12;
-    const bottom=actualBossBottom(b);
-    if(bottom!==null){
-     const diff=b.ground+.04-bottom;
-     if(Math.abs(diff)<60)b.g.position.y+=diff*(b.age>=b.animDur?1:Math.min(1,dt*8));
+  // Aterrizaje contra la MALLA real animada; nunca hundir todo Nashor.
+  // Se conserva exactamente el cálculo ya corregido del Dragón.
+  b.settleTimer-=dt;
+  if(b.settleTimer<=0||b.age===b.animDur){
+   b.settleTimer=b.age===b.animDur?.18:(b.kind==='baron'?.07:.12);
+   const bottom=actualBossBottom(b);
+   if(bottom!==null){
+    const diff=b.ground+.04-bottom;
+    if(Math.abs(diff)<60){
+     const strength=b.age>=b.animDur?1:Math.min(1,dt*(b.kind==='baron'?6:8));
+     b.g.position.y+=diff*strength;
     }
    }
   }
@@ -1940,6 +1983,7 @@ update=function(dt){
   }
  }
  _bossUpdate(dt);
+ if(running&&!paused&&!gameOver)for(const e of enemies)endBossSpawnProtectionIfReady(e);
  // Las muertes siguen su curso aunque el premio del jefe pause la partida.
  // Sin esto, Nashor parecía morir erguido durante la selección de bonificación.
  stepBossDeathVisuals(dt);
