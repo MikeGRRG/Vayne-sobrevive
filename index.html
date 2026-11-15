@@ -1875,6 +1875,7 @@ function bossDeathClip(e){
   g:e,mixer,clip,kind,age:0,animDur,holdAge:0,holdDur:10,
   ground:floorBoss(e.position.x,e.position.z),settleTimer:0,impact:false,
   baronSpines:kind==='baron'?Array.from({length:11},(_,i)=>({idx:i+1,bone:e.getObjectByName('Spine'+(i+1))})).filter(v=>v.bone):null,
+  baronPoseFrozen:false,
   tempVec:new THREE.Vector3()
  });
 }
@@ -1907,11 +1908,11 @@ function stepBossDeathVisuals(dt){
    // El GLB Death original mueve cada vértebra por separado; reproducirlo
    // completo y al final relajar la columna EN CADENA, no girar ni hundir
    // el grupo entero.
-   if(b.mixer)b.mixer.update(dt);
+   if(!b.baronPoseFrozen&&b.mixer)b.mixer.update(dt);
    const start=.55,end=b.animDur-.15;
    const progress=THREE.MathUtils.clamp((b.age-start)/Math.max(.1,end-start),0,1);
    const ease=progress*progress*progress*(progress*(progress*6-15)+10);
-   if(b.baronSpines){
+   if(b.baronSpines&&!b.baronPoseFrozen){
     for(const {idx,bone} of b.baronSpines){
      if(idx<4)continue; // la base sigue anclada al suelo
      const k=(idx-4)/7;
@@ -1921,6 +1922,7 @@ function stepBossDeathVisuals(dt){
      bone.position.z+=1.35*k*weight; // el cuello se extiende sobre el suelo
     }
    }
+   if(b.age>=b.animDur)b.baronPoseFrozen=true; // postura final fija, sin acumular desplazamientos
    if(!b.impact&&progress>.79){
     b.impact=true;
     ring(b.g.position.x,b.g.position.z,0x8952bd,9,.9);
