@@ -239,15 +239,33 @@ export function createForestPrototype(THREE, scene, sunlight, legacyProcedural, 
     o.position.set(a.x,a.y,a.z);o.rotation.set(0,a.rot,0);o.scale.set(a.w,1,a.d)},false);
 
   // Vegetación con mallas de hojas reales (cruces de hojas lanceoladas), sin sprites.
+  // Frondes curvadas con nervio central y foliolos; comparten una sola geometría.
   const leafVerts=[];
-  function addLeaf(cx,cz,angle,len,width,elevation) {
+  const leafTri=(a,b,c)=>leafVerts.push(...a,...b,...c);
+  for(let f=0;f<9;f++){
+    const angle=f*Math.PI*2/9+rand(-.1,.1),len=rand(.7,1.25),rise=rand(.4,.95);
     const dx=Math.cos(angle),dz=Math.sin(angle),nx=-dz,nz=dx;
-    const v=[[cx,.04,cz],[cx+dx*len*.55+nx*width,elevation*.8,cz+dz*len*.55+nz*width],
-    [cx+dx*len,elevation,cz+dz*len],[cx+dx*len*.55-nx*width,elevation*.8,cz+dz*len*.55-nz*width]];
-    for(const id of [0,1,2,0,2,3])leafVerts.push(...v[id]);
+    const frond=(t,offset=0)=>{
+      const bend=Math.sin(t*Math.PI)*.09;
+      return [dx*len*t+nx*(bend+offset),.035+rise*t*(.86+.14*t),dz*len*t+nz*(bend+offset)];
+    };
+    for(let j=0;j<6;j++){
+      const t0=j/6,t1=(j+1)/6,w0=.2*Math.sin(Math.PI*(t0*.9+.04)),w1=.2*Math.sin(Math.PI*(t1*.9+.04));
+      const a=frond(t0,-w0),b=frond(t0,w0),c=frond(t1,w1),d=frond(t1,-w1);
+      leafTri(a,b,c);leafTri(a,c,d);
+    }
+    for(let j=1;j<6;j++){
+      const t=j/7,lenLeaf=.2*(1-t*.4),center=frond(t);
+      for(const side of [-1,1]){
+        const root=frond(t+.065);
+        const tip=[center[0]+nx*lenLeaf*side+dx*.08,center[1]+.035,center[2]+nz*lenLeaf*side+dz*.08];
+        leafTri(root,center,tip);
+      }
+    }
   }
-  for(let i=0;i<9;i++)addLeaf(0,0,i*Math.PI*2/9,rand(.65,1.15),rand(.1,.21),rand(.4,.95));
-  const fernGeo=new THREE.BufferGeometry();fernGeo.setAttribute('position',new THREE.Float32BufferAttribute(leafVerts,3));fernGeo.computeVertexNormals();
+  const fernGeo=new THREE.BufferGeometry();
+  fernGeo.setAttribute('position',new THREE.Float32BufferAttribute(leafVerts,3));
+  fernGeo.computeVertexNormals();
   const fernData=[],grassData=[],flowerData=[];
   function openSpace(x,z){
     if(Math.hypot(x,z)<17)return true;
@@ -266,10 +284,15 @@ export function createForestPrototype(THREE, scene, sunlight, legacyProcedural, 
     o.position.set(a.x,a.y,a.z);o.rotation.set(0,a.rot,0);o.scale.setScalar(a.s);
   },false);
   const grassGeo=new THREE.BufferGeometry(),gv=[];
-  for(let i=0;i<3;i++){
-    const a=i*Math.PI/3,dx=Math.cos(a),dz=Math.sin(a),nx=-dz*.055,nz=dx*.055;
-    const v=[[nx,0,nz],[-nx,0,-nz],[dx*.15,rand(.45,.72),dz*.15]];
-    for(const p of v)gv.push(...p);
+  const grassTri=(a,b,c)=>gv.push(...a,...b,...c);
+  for(let i=0;i<4;i++){
+    const angle=i*Math.PI*.5+rand(-.2,.2),dx=Math.cos(angle),dz=Math.sin(angle),nx=-dz,nz=dx;
+    const h=rand(.43,.8),width=rand(.045,.095),bend=rand(.07,.2);
+    const left=[-nx*width,0,-nz*width],right=[nx*width,0,nz*width];
+    const ml=[dx*bend*.35-nx*width*.6,h*.54,dz*bend*.35-nz*width*.6];
+    const mr=[dx*bend*.35+nx*width*.6,h*.54,dz*bend*.35+nz*width*.6];
+    const tip=[dx*bend,h,dz*bend];
+    grassTri(left,right,mr);grassTri(left,mr,ml);grassTri(ml,mr,tip);
   }
   grassGeo.setAttribute('position',new THREE.Float32BufferAttribute(gv,3));grassGeo.computeVertexNormals();
   for(let i=0;i<10500;i++){
@@ -280,7 +303,16 @@ export function createForestPrototype(THREE, scene, sunlight, legacyProcedural, 
   instance(grassGeo,grassMat,grassData,(a,i,o)=>{
     o.position.set(a.x,a.y,a.z);o.rotation.set(0,a.rot,0);o.scale.set(a.s,Math.max(.4,a.s),a.s);
   });
-  const flowerG=new THREE.IcosahedronGeometry(.12,0);
+  const flowerPositions=[];
+  for(let i=0;i<7;i++){
+    const ang=i*2*Math.PI/7,dirX=Math.cos(ang),dirZ=Math.sin(ang),perpX=-dirZ,perpZ=dirX;
+    const a=[0,0,0],b=[dirX*.21+perpX*.12,.015,dirZ*.21+perpZ*.12],
+      c=[dirX*.3,.035,dirZ*.3],d=[dirX*.21-perpX*.12,.015,dirZ*.21-perpZ*.12];
+    flowerPositions.push(...a,...b,...c,...a,...c,...d);
+  }
+  const flowerG=new THREE.BufferGeometry();
+  flowerG.setAttribute('position',new THREE.Float32BufferAttribute(flowerPositions,3));
+  flowerG.computeVertexNormals();
   for(let i=0;i<700;i++){
     const x=rand(-80,80),z=rand(-80,80);
     if(riverDistance(x,z)<riverWidth(z)/2+.8)continue;
@@ -323,6 +355,52 @@ export function createForestPrototype(THREE, scene, sunlight, legacyProcedural, 
   instance(canopyGeo,foliage,crownsB,(a,i,o)=>{
     o.position.set(a.x,a.y,a.z);o.rotation.set(.1,a.rot,.08);o.scale.set(a.s*.94,a.s*.72,a.s);
   });
+  // Hojas en silueta a lo largo de las copas. Se agrupan en una malla instanciada
+  // (un draw call) para ocultar el aspecto de esfera geométrica de los árboles.
+  const leafShape=new THREE.BufferGeometry(),lv=[
+    0,0,0,-.17,.22,.025,0,.52,.08,
+    0,0,0,0,.52,.08,.17,.22,.025,
+    0,.52,.08,-.08,.3,.09,.08,.3,.09
+  ];
+  leafShape.setAttribute('position',new THREE.Float32BufferAttribute(lv,3));leafShape.computeVertexNormals();
+  const treetopLeaves=[];
+  for(const c of [...crownsA,...crownsB]){
+    for(let j=0;j<6;j++){
+      const az=rand(0,Math.PI*2),vertical=rand(-.68,.78);
+      const span=Math.sqrt(1-vertical*vertical);
+      const x=c.x+Math.cos(az)*span*c.s*.8,
+        z=c.z+Math.sin(az)*span*c.s*.78,
+        y=c.y+vertical*c.s*.63;
+      const green=new THREE.Color(c.color);
+      green.multiplyScalar(rand(.81,1.21));
+      treetopLeaves.push({x,y,z,s:rand(.55,1.22)*c.s,rot:az,tilt:rand(-1.25,-.3),color:green.getHex()});
+    }
+  }
+  instance(leafShape,foliage,treetopLeaves,(a,i,o)=>{
+    o.position.set(a.x,a.y,a.z);
+    o.rotation.set(a.tilt,a.rot,Math.sin(a.rot)*.23);
+    o.scale.set(a.s*.64,a.s*.7,a.s*.45);
+  });
+  // Oscurecimiento de contacto suave bajo árboles y rocas (AO aproximada barata).
+  const shadowCanvas=document.createElement('canvas');shadowCanvas.width=shadowCanvas.height=128;
+  const sc=shadowCanvas.getContext('2d'),gradient=sc.createRadialGradient(64,64,3,64,64,63);
+  gradient.addColorStop(0,'rgba(7,18,12,.52)');
+  gradient.addColorStop(.45,'rgba(9,24,15,.23)');
+  gradient.addColorStop(1,'rgba(13,29,18,0)');
+  sc.fillStyle=gradient;sc.fillRect(0,0,128,128);
+  const shadowTex=new THREE.CanvasTexture(shadowCanvas);
+  const shadowMat=new THREE.MeshBasicMaterial({
+    map:shadowTex,transparent:true,opacity:.58,depthWrite:false,
+    polygonOffset:true,polygonOffsetFactor:-1,side:THREE.DoubleSide
+  });
+  const shadowData=[
+    ...trunks.map(t=>({x:t.x,y:height(t.x,t.z)+.055,z:t.z,s:t.s*4.3})),
+    ...rockSet.filter(r=>r.size>.52).map(r=>({x:r.x,y:height(r.x,r.z)+.048,z:r.z,s:r.size*2.3}))
+  ];
+  instance(new THREE.PlaneGeometry(1,1).rotateX(-Math.PI/2),shadowMat,shadowData,(a,i,o)=>{
+    o.position.set(a.x,a.y,a.z);o.rotation.set(0,0,0);o.scale.set(a.s,1,a.s);
+  });
+
   // Grandes piedras musgosas en torno al bosque, evitando las arenas centrales.
   const boulders=[];
   for(let i=0;i<450;i++){
