@@ -1875,7 +1875,7 @@ function stepBossDeathVisuals(dt){
     if(b.age>=2.25){
      const headHeight=b.tempVec.y;
      const wanted=b.ground+.85;
-     const correction=THREE.MathUtils.clamp(wanted-headHeight,-7,1);
+     const correction=THREE.MathUtils.clamp(wanted-headHeight,-7,0);
      b.g.position.y+=correction*Math.min(1,dt*(b.age>=b.animDur?9:2.1));
     }
     if(!b.impact&&(b.tempVec.y<=b.ground+1.65||b.age>=b.animDur*.87)){
