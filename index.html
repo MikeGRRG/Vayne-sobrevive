@@ -27,6 +27,7 @@
 <div id="animDebug" class="hidden"><h3>DIAGNÓSTICO DE ANIMACIONES</h3><p>Selecciona cualquier clip del GLB y reprodúcelo directamente, sin que el controlador de movimiento lo sustituya. Importa primero el modelo de Vayne y empieza la partida.</p><select id="animClipSelect"><option value="">Importa un modelo con animaciones…</option></select><div class="dbgActions"><button id="animPlayOnce">▶ Reproducir una vez</button><button id="animPlayLoop" class="secondary">↻ Repetir</button><button id="animStop" class="secondary">Detener prueba</button><button id="animClose" class="secondary">Cerrar</button></div><div id="animDebugStatus">Esperando modelo…</div></div>
 <script type="module">
 import * as THREE from 'three';
+import { createForestPrototype } from './forest_prototype.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as cloneSkeleton } from 'three/addons/utils/SkeletonUtils.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
@@ -680,6 +681,7 @@ update=function(dt){if(!running||paused||gameOver){_upd(dt);return}
  orbChainT-=dt;if(orbChainT<=0)orbChain=0;comboT-=dt;if(comboT<=0&&combo){combo=0;comboEl.style.opacity=0}
  stepP(dt);stepRings(dt);stepNums(dt);stepMotes(dt);shakeA*=Math.exp(-dt*10);flashA=Math.max(0,flashA-dt*2);flashEl.style.opacity=flashA};
 addEventListener('keydown',e=>{if(e.code==='KeyB'&&composer){bloomOn=!bloomOn;showMessage('Bloom '+(bloomOn?'ON':'OFF'))}else if(e.code==='KeyM'){muted=!muted;showMessage(muted?'Sonido OFF':'Sonido ON')}else if(e.code==='F3'){e.preventDefault();const d=document.getElementById('riftDiag');d.style.setProperty('display',d.style.display==='block'?'none':'block','important')}});
+const legacySceneBeforeWorldV2=new Set(scene.children);
 /* ======================= MUNDO v2: grieta procedural (sustituye al GLB) ======================= */
 {
 scene.background=new THREE.Color(0x0b1620);scene.fog=new THREE.Fog(0x0b1620,85,185);camera.far=300;camera.updateProjectionMatrix();terrain.visible=false;
@@ -739,6 +741,19 @@ for(const b of BASES)structure(...b);
 scene.add(key.target);key.shadow.mapSize.set(2048,2048);
 const _u2=update;update=function(dt){_u2(dt);if(running&&!paused&&!gameOver){key.position.set(hero.position.x-8,15,hero.position.z+7);key.target.position.copy(hero.position);for(const p of pulse){p.m.rotation.y+=dt*p.spin;p.rm.emissiveIntensity=1.6+Math.sin(elapsed*2+p.m.position.x)*.6}}};
 }
+// Bosque del Río Antiguo: nuevo mapa 3D por defecto. Los personajes y los jefes
+// permanecen fuera del grupo de escenarios y no se ocultan.
+const forestPrototype=createForestPrototype(THREE,scene,key,proceduralWorldObjects,legacySceneBeforeWorldV2,window.OBST||[]);
+const originalGroundHeight=getRiftGroundHeight;
+getRiftGroundHeight=function(x,z){
+ return importedRift?originalGroundHeight(x,z):forestPrototype.height(x,z);
+};
+const originalWorldCollision=blockedByRift;
+blockedByRift=function(x,z,r=.42){
+ return originalWorldCollision(x,z,r)||forestPrototype.blocked(x,z,r);
+};
+const preForestUpdate=update;
+update=function(dt){preForestUpdate(dt);if(running&&!paused&&!gameOver)forestPrototype.update(dt)};
 /* ======================= v9: mercader, habilidades, drops, E de area, canon ======================= */
 Object.assign(TUNE,{magnetChance:.02,bombChance:.006,shopFirst:40,shopEvery:75,shopStay:50,eRange:9,eMax:8,eCD:6,cannonEvery:22,goldMul:1});
 const SLAMS=window.OBST||[];
