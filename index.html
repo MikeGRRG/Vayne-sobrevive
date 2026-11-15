@@ -1390,30 +1390,45 @@ const _sh2=slowHero;slowHero=function(f,d){_sh2(f,d*(1-SLOWRES))};
 const CRT={wolf:{h:1.3,hp:()=>5+wave*1.1,sp:3.4},raptor:{h:1.7,hp:()=>8+wave*1.6,sp:2.7},crab:{h:1.4,hp:()=>36+wave*6,sp:1.2}};
 
 function repairDragonBoneClips(model,clips){
- // Algunos clips del GLB guardan DELTAS de posición en lugar de la posición de reposo.
- // Al reproducirlos como animaciones absolutas, las 90+ articulaciones se juntan y el dragón encoge.
- const byName=new Map();model.traverse(node=>{if(node.isBone&&node.name)byName.set(node.name,node)});
- let fixed=0;
+ // El archivo Elder mezcla animaciones ABSOLUTAS con animaciones DELTA.
+ // Attack1, Spell1 y algunas miradas empiezan con traslaciones cero y
+ // quaterniones identidad: deben componerse con la pose de reposo del hueso.
+ const bones=new Map();
+ model.traverse(o=>{if(o.isBone&&o.name)bones.set(o.name,o)});
+ const tmp=new THREE.Quaternion(),rest=new THREE.Quaternion();
+ let converted=0;
  for(const clip of clips){
-  const degenerate=[];
-  let relevant=0;
-  for(const track of clip.tracks){
-   if(!track.name.endsWith('.position')||track.values.length<3)continue;
-   const name=track.name.slice(0,-9),bone=byName.get(name);
-   if(!bone||bone.position.length()<=.06)continue;
-   relevant++;
-   const first=Math.hypot(track.values[0],track.values[1],track.values[2]);
-   if(first<Math.max(.035,bone.position.length()*.16))degenerate.push([track,bone]);
-  }
-  if(relevant>=20&&degenerate.length/relevant>.65){
-   for(const [track,bone] of degenerate){
-    const vals=track.values;
-    for(let i=0;i<vals.length;i+=3){vals[i]+=bone.position.x;vals[i+1]+=bone.position.y;vals[i+2]+=bone.position.z}
+  let totalPos=0,zeroPos=0,totalQuat=0,identityQuat=0;
+  for(const tr of clip.tracks){
+   const dot=tr.name.lastIndexOf('.');if(dot<0)continue;
+   const bone=bones.get(tr.name.slice(0,dot));if(!bone)continue;
+   const prop=tr.name.slice(dot+1),v=tr.values;
+   if(prop==='position'&&bone.position.length()>.07&&v.length>=3){
+    totalPos++;if(Math.hypot(v[0],v[1],v[2])<.035)zeroPos++;
+   }else if(prop==='quaternion'&&v.length>=4){
+    totalQuat++;if(Math.hypot(v[0],v[1],v[2],v[3]-1)<.07)identityQuat++;
    }
-   clip.resetDuration();fixed++;
   }
+  // No convertir clips de vuelo/idle originales: sus pistas ya son absolutas.
+  if(totalPos<30||totalQuat<30||zeroPos/totalPos<.72||identityQuat/totalQuat<.72)continue;
+  for(const tr of clip.tracks){
+   const dot=tr.name.lastIndexOf('.');if(dot<0)continue;
+   const bone=bones.get(tr.name.slice(0,dot));if(!bone)continue;
+   const prop=tr.name.slice(dot+1),v=tr.values;
+   if(prop==='position'){
+    for(let i=0;i<v.length;i+=3){v[i]+=bone.position.x;v[i+1]+=bone.position.y;v[i+2]+=bone.position.z}
+   }else if(prop==='quaternion'){
+    rest.copy(bone.quaternion);
+    for(let i=0;i<v.length;i+=4){
+     tmp.fromArray(v,i).normalize().premultiply(rest).normalize();
+     tmp.toArray(v,i);
+    }
+   }
+  }
+  converted++;
+  console.info('[Ancestral] Corregida animación delta:',clip.name);
  }
- console.info('[Ancestral] Clips de esqueleto reparados:',fixed,'/',clips.length);
+ console.info('[Ancestral] Pistas de huesos reparadas:',converted,'/',clips.length);
 }
 
 function loadCreature(kind,file){if(!file)return;const st=$(kind+'ModelStatus');if(st)st.textContent='Cargando…';gltfLoader.load(URL.createObjectURL(file),gltf=>{const model=gltf.scene;model.traverse(o=>{if(o.isMesh){o.castShadow=false;o.receiveShadow=true;if(o.material)o.material.side=THREE.FrontSide}});let b=new THREE.Box3().setFromObject(model);
@@ -1617,7 +1632,7 @@ function dragonSpawnRoar(dragon){
  for(const e of enemies){
   if(e===dragon)continue;
   const dx=e.position.x-x,dz=e.position.z-z;
-  if(dx*dx+dz*dz<=r2){e.userData.roarStunT=DRAGON_ROAR_SECONDS;spark(e.position.x,1.3,e.position.z,0xff8c31,5,1.7,2.2,.8)}
+  e.userData.roarStunT=Math.max(e.userData.roarStunT||0,DRAGON_ROAR_SECONDS);if(dx*dx+dz*dz<=r2)spark(e.position.x,1.3,e.position.z,0xff8c31,5,1.7,2.2,.8)
  }
  for(const k in keys)keys[k]=false;
  ring(x,z,0xff6527,DRAGON_ROAR_RADIUS,.9);
@@ -1659,7 +1674,14 @@ function victory(){gameOver=true;const el=$('victory');el.innerHTML=`<div class=
 function arrowObj(x,z,label){const el=$('objArrow');_p.set(x,1.5,z).project(camera);if(_p.z<1&&Math.abs(_p.x)<.9&&Math.abs(_p.y)<.85){el.style.display='none';return}let ax=_p.x,ay=_p.y;if(_p.z>1){ax=-ax;ay=-ay}const m=Math.max(Math.abs(ax)/.88,Math.abs(ay)/.78,1e-4);ax/=m;ay/=m;el.style.display='block';el.style.left=((ax*.5+.5)*innerWidth)+'px';el.style.top=((-ay*.5+.5)*innerHeight)+'px';el.style.transform='translate(-50%,-50%)';el.textContent='➤ '+label+' · '+Math.round(Math.hypot(x-hero.position.x,z-hero.position.z))+' m'}
 function pre13(dt){const t=elapsed;
  if(eclipseT>0&&(eclipseT-=dt)<=0)applyStats();if(baronT>0&&(baronT-=dt)<=0)applyStats();if(surgeT>0)surgeT-=dt;
- for(const o of OBJ){if(!o.w&&t>=o.t-30){o.w=1;banner('⚠ '+o.n+' APARECE EN 30 s ⚠')}if(!o.d&&t>=o.t){o.d=1;spawnBoss(o.k)}}
+ for(const o of OBJ){
+  const lead=o.k==='dragon'?10:o.k==='baron'?8:0;
+  if(lead&&!o.preSpawn&&t>=o.t-lead){
+   o.preSpawn=true;o.w=1;spawnBoss(o.k);
+  }
+  if(!lead&&!o.w&&t>=o.t-30){o.w=1;banner('⚠ '+o.n+' APARECE EN 30 s ⚠')}
+  if(!o.d&&t>=o.t){o.d=1;if(!o.preSpawn)spawnBoss(o.k)}
+ }
  for(const v of EVT)if(!v.d&&t>=v.t){v.d=1;banner('⚠ '+v.n+' ⚠');v.f()}
  for(const c of CROSS)if(!c.d&&t>=c.t){c.d=1;boonQ.push({open:openCross})}
  if(boonQ.length&&!boonOpen)boonQ.shift().open();
@@ -1706,6 +1728,8 @@ function baronQuake(e){
 
 const BOSS_MID={x:0,z:0};
 const bossIntroDecor=[];
+const burrowTraces=[];
+const baronTunnel=new THREE.CatmullRomCurve3([new THREE.Vector3(-36,0,-23),new THREE.Vector3(-27,0,14),new THREE.Vector3(-12,0,-14),new THREE.Vector3(13,0,12),new THREE.Vector3(0,0,0)],false,'catmullrom',.42);
 const floorBoss=(x,z)=>getRiftGroundHeight(x,z)??0;
 function discardBossIntroDecor(obj){
  if(!obj)return;
@@ -1722,6 +1746,7 @@ function makeBaronFissures(){
  const g=new THREE.Group(),y=floorBoss(0,0)+.22;g.position.set(0,y,0);
  const m=new THREE.MeshBasicMaterial({color:0x7b25db,transparent:true,opacity:.35,depthWrite:false,side:THREE.DoubleSide,blending:THREE.AdditiveBlending,toneMapped:false});
  const disc=new THREE.Mesh(new THREE.CircleGeometry(5.1,40),m);disc.rotation.x=-Math.PI/2;g.add(disc);
+ const mound=new THREE.Mesh(new THREE.SphereGeometry(3.6,24,12,0,Math.PI*2,0,Math.PI/2),new THREE.MeshStandardMaterial({color:0x63415b,roughness:1,transparent:true,opacity:.94,depthWrite:true}));mound.scale.y=.38;mound.position.y=-.1;g.add(mound);
  const ringMat=new THREE.MeshBasicMaterial({color:0xdc82ff,transparent:true,opacity:.85,depthWrite:false,side:THREE.DoubleSide,toneMapped:false});
  const ringObj=new THREE.Mesh(new THREE.RingGeometry(4.9,5.2,48),ringMat);ringObj.rotation.x=-Math.PI/2;ringObj.position.y=.025;g.add(ringObj);
  const verts=[];
@@ -1734,6 +1759,32 @@ function makeBaronFissures(){
  g.add(new THREE.LineSegments(linesGeo,new THREE.LineBasicMaterial({color:0xea90ff,transparent:true,opacity:.92,depthTest:true,toneMapped:false})));
  scene.add(g);bossIntroDecor.push(g);return g;
 }
+
+function stampBaronBurrow(x,z){
+ const g=new THREE.Group();
+ g.position.set(x,floorBoss(x,z)+.14,z);
+ const ringMaterial=new THREE.MeshBasicMaterial({color:0xc872ff,transparent:true,opacity:.83,depthWrite:false,side:THREE.DoubleSide,toneMapped:false,blending:THREE.AdditiveBlending});
+ const r=new THREE.Mesh(new THREE.RingGeometry(.6,2.35,24),ringMaterial);r.rotation.x=-Math.PI/2;g.add(r);
+ const pts=[];
+ for(let i=0;i<7;i++){
+  const a=i*Math.PI*2/7,dx=Math.cos(a),dz=Math.sin(a);
+  pts.push(dx*.28,.04,dz*.28,dx*(2.5+i%3*.4),.04,dz*(2.5+i%3*.4));
+ }
+ const geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.Float32BufferAttribute(pts,3));
+ const cracks=new THREE.LineSegments(geo,new THREE.LineBasicMaterial({color:0xe9a1ff,transparent:true,opacity:.8,depthWrite:false,toneMapped:false}));
+ g.add(cracks);scene.add(g);bossIntroDecor.push(g);
+ burrowTraces.push({g,ringMaterial,crackMat:cracks.material,life:3.4});
+}
+function tickBurrowTraces(dt){
+ for(let i=burrowTraces.length-1;i>=0;i--){
+  const b=burrowTraces[i];b.life-=dt;
+  b.ringMaterial.opacity=Math.max(0,b.life/3.4)*.82;
+  b.crackMat.opacity=Math.max(0,b.life/3.4)*.8;
+  b.g.scale.setScalar(.8+(.7*(1-b.life/3.4)));
+  if(b.life<=0){discardBossIntroDecor(b.g);burrowTraces.splice(i,1)}
+ }
+}
+
 const _spawnBossModel=spawnBoss;
 spawnBoss=function(kind){
  _spawnBossModel(kind);
@@ -1742,21 +1793,27 @@ spawnBoss=function(kind){
  if(kind==='dragon'){
   e.visible=true;
   e.traverse(o=>{if(o.isMesh){o.visible=true;o.frustumCulled=false}});
-  const startX=-43,startZ=-38;
-  e.position.set(startX,floorBoss(startX,startZ)+25,startZ);
+  const startX=-12,startZ=-22;
+  e.position.set(startX,floorBoss(startX,startZ)+16,startZ);
   e.rotation.y=Math.atan2(-startX,-startZ);
   const shadow=makeDragonGroundShadow();
-  u.bossIntro={kind:'dragon',time:0,duration:5.2,shadow,landing:false};
-  if(!playBossClip(e,/^SRU_Dragon_flying_Run\.anm$/i,4))playBossClip(e,/^Run$/i,4);
+  u.bossIntro={kind:'dragon',time:0,duration:10,shadow,landing:false};
+  // Mantiene un ciclo de aleteo natural durante todo el vuelo.
+  if(playBossClip(e,/^SRU_Dragon_flying_Run\.anm$|^Run$/i,9)){
+   u.bossAction.setLoop(THREE.LoopRepeat,Infinity);
+   u.bossAction.setEffectiveTimeScale(1);
+   u.bossAnimLockT=9;
+  }
   banner('🐉 ¡EL DRAGÓN ANCESTRAL SOBREVUELA LA GRIETA!');
   noise(.7,.11,650,170);tone(145,.7,'sawtooth',.10,.7);
  }else if(kind==='baron'){
-  e.position.set(0,floorBoss(0,0)-10,0);
+  e.position.set(-36,floorBoss(-36,-23)-25,-23);
   e.visible=true;
   const portal=makeBaronFissures();
-  u.bossIntro={kind:'baron',time:0,stage:'rumble',portal,pulse:0};
-  banner('👁 ¡ALGO ENORME SE MUEVE BAJO LA TIERRA!');
-  ring(0,0,0x9935f0,9,1.2);
+  portal.position.set(-36,floorBoss(-36,-23)+.2,-23);
+  u.bossIntro={kind:'baron',time:0,stage:'tunnel',portal,pulse:0,trackInterval:0};
+  banner('👁 ¡EL SUELO SE MUEVE! ¡EL BARÓN SE ACERCA POR DEBAJO!');
+  ring(-36,-23,0x9935f0,8,1.2);
   noise(1.1,.14,390,55);tone(60,1.2,'sawtooth',.18,.55);
  }
 };
@@ -1781,6 +1838,7 @@ const _bossReset=reset;
 reset=function(){
  baronLiftT=baronRiseT=0;baronRising=null;
  for(const d of [...bossIntroDecor])discardBossIntroDecor(d);
+ burrowTraces.length=0;
  for(const b of bossDeathVisuals)scene.remove(b.g);bossDeathVisuals.length=0;
  _bossReset();
 };
@@ -1796,57 +1854,77 @@ update=function(dt){
   if(!intro)continue;
   if(intro.kind==='dragon'){
    intro.time=Math.min(intro.duration,intro.time+dt);
-   const t=intro.time/intro.duration;
-   const flyEase=1-Math.pow(1-t,1.5);
-   const x=-43*(1-flyEase),z=-38*(1-flyEase);
-   // Gran recorrido aéreo, descenso progresivo y aterrizaje real en el centro.
-   const height=22*Math.pow(1-t,1.4)+(t<.8?3:0);
+   const tt=intro.time,flightEnd=8.6;
+   let x,z,height,angle;
+   if(tt<flightEnd){
+    const f=tt/flightEnd;
+    angle=-2.1+f*5.2;
+    const radius=24-11*f;
+    x=Math.cos(angle)*radius;z=Math.sin(angle)*radius;
+    height=16+1.8*Math.sin(f*Math.PI*2);
+   }else{
+    // Desde los 8,6 s se lanza hacia el suelo del centro.
+    const t=Math.min(1,(tt-flightEnd)/(intro.duration-flightEnd));
+    const eased=t*t*(3-2*t),a=-2.1+5.2;
+    x=Math.cos(a)*13*(1-eased);z=Math.sin(a)*13*(1-eased);
+    height=16*(1-eased);
+    if(!intro.landing){
+     intro.landing=true;
+     playBossClip(e,/^Landing$/i,1.4);
+     ring(0,0,0xff6935,9,1);
+     banner('🐉 ¡EL ANCESTRAL DESCIENDE SOBRE EL CENTRO!');
+    }
+   }
    e.position.set(x,floorBoss(x,z)+height,z);
-   e.rotation.y=Math.atan2(-x,-z);
-   e.rotation.z=Math.sin(t*Math.PI)*-.12;
+   const nx=Math.cos(Math.min(flightEnd,tt)/flightEnd*5.2-2.1+.09)*(24-11*Math.min(flightEnd,tt)/flightEnd);
+   const nz=Math.sin(Math.min(flightEnd,tt)/flightEnd*5.2-2.1+.09)*(24-11*Math.min(flightEnd,tt)/flightEnd);
+   e.rotation.y=Math.atan2(nx-x,nz-z);
+   e.rotation.z=tt<flightEnd?-.13*Math.sin(tt*.9):0;
    if(intro.shadow){
     intro.shadow.position.set(x,floorBoss(x,z)+.15,z);
-    intro.shadow.material.opacity=.13+.35*t;
-    intro.shadow.scale.setScalar(.55+t*1.2);
-   }
-   if(t>=.75&&!intro.landing){
-    intro.landing=true;
-    playBossClip(e,/^Landing$/i,1.25);
-    ring(0,0,0xff6935,9,1);
-    banner('🐉 ¡EL ANCESTRAL SE ABALANZA SOBRE EL CENTRO!');
+    intro.shadow.material.opacity=.12+.4*(1-height/20);
+    intro.shadow.scale.setScalar(.6+(1-height/20)*1.1);
    }
    if(u.visualMixer)u.visualMixer.update(dt);
-   if(t>=1){
+   if(tt>=intro.duration){
     e.position.set(0,floorBoss(0,0),0);e.rotation.z=0;
     discardBossIntroDecor(intro.shadow);
     u.bossIntro=null;u.roarStunT=0;
-    dragonSpawnRoar(e); // solo al tocar tierra
+    dragonSpawnRoar(e);
    }
   }else if(intro.kind==='baron'){
    intro.time+=dt;
-   if(intro.stage==='rumble'){
-    // Grietas y pulsaciones anuncian al monstruo antes de verlo.
-    intro.pulse+=dt;
+   if(intro.stage==='tunnel'){
+    const pct=Math.min(1,intro.time/8);
+    const p=baronTunnel.getPoint(pct),x=p.x,z=p.z;
+    e.position.set(x,floorBoss(x,z)-25,z);
     const g=intro.portal;
     if(g){
-     g.scale.setScalar(.86+.24*Math.sin(intro.time*8)**2+.12*intro.time);
-     g.rotation.y=intro.time*.25;
-     const disc=g.children[0],edge=g.children[1];
-     disc.material.opacity=.25+.23*Math.sin(intro.time*9)**2;
-     edge.material.opacity=.55+.35*Math.sin(intro.time*12)**2;
+     g.position.set(x,floorBoss(x,z)+.2,z);
+     g.scale.setScalar(.65+.5*Math.sin(intro.time*8)**2+.5*pct);
+     g.rotation.y=intro.time*.4;
+     g.children[0].material.opacity=.4+.25*Math.sin(intro.time*11)**2;
+     g.children[1].material.opacity=.68+.32*Math.sin(intro.time*13)**2;
     }
-    if(intro.pulse>=.36){
+    intro.trackInterval+=dt;intro.pulse+=dt;
+    if(intro.trackInterval>=.21){
+     intro.trackInterval=0;
+     stampBaronBurrow(x,z);
+     spark(x,1,z,0xa45aff,17,4,3,1.3);
+    }
+    if(intro.pulse>=.42){
      intro.pulse=0;
-     ring(0,0,0xa74cf4,5.5+Math.random()*3,.65);
-     spark(0,.5,0,0xb65aff,9,6,2,.65);
-     shake(.13);
+     ring(x,z,0xb866ff,6,.75);
+     shake(.24);
+     tone(60+Math.random()*30,.32,'sawtooth',.07,.6);
     }
-    if(intro.time>=2.2){
+    if(pct>=1){
      intro.stage='rising';intro.time=0;
+     e.position.set(0,floorBoss(0,0)-8,0);
      if(intro.portal)discardBossIntroDecor(intro.portal);
      intro.portal=null;
      playBossClip(e,/^SRU_Baron_spawn\.anm$|^Spawn_Crawlout$/i,3.2);
-     baronQuake(e); // comienza la onda global de 2 s cuando revienta el suelo
+     baronQuake(e);
     }
    }else if(intro.stage==='rising'&&baronRiseT<=0){
     u.roarStunT=0;u.bossIntro=null;
@@ -1855,6 +1933,7 @@ update=function(dt){
    if(u.visualMixer)u.visualMixer.update(dt);
   }
  }
+ tickBurrowTraces(dt);
  if(baronLiftT>0){
   baronLiftT=Math.max(0,baronLiftT-dt);
   const lift=5.5*Math.max(0,Math.sin(Math.PI*(2-baronLiftT)/2));
