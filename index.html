@@ -1804,65 +1804,97 @@ bossAI=function(e,u,dt){if(u.bossIntro||u.bossAnimLockT>0||e===baronRising)retur
  if((u.boss==='dragon'||u.boss==='baron')&&doA)bossAttackClip(e,false);
  else if((u.boss==='dragon'||u.boss==='baron')&&doB)bossAttackClip(e,true);
 };
+/* Muerte de jefes: conservar el modelo REAL y su esqueleto.
+   No combinar con la física genérica de minions: la expulsaba/encogía mientras
+   se reproducía otra copia del cadáver (dos modelos superpuestos). */
 function bossDeathClip(e){
  const u=e.userData,kind=u.boss,tpl=ELT[kind];
  if(!kind)return;
- const original=e.children.find(c=>c.isGroup&&c!==u.shadow)||e.children.find(c=>c.isObject3D&&c!==u.shadow&&!c.isMesh);
- if(!original)return;
- const visual=cloneSkeleton(original),g=new THREE.Group();
- g.position.copy(e.position);g.scale.copy(e.scale);g.rotation.copy(e.rotation);g.add(visual);
- visual.traverse(o=>{if(o.isMesh){o.frustumCulled=false;o.visible=true}});
- scene.add(g);
- const clip=tpl?.animations.find(a=>/^Death$/i.test(a.name||''))||null;
- const mixer=new THREE.AnimationMixer(visual);
- const animDur=kind==='baron'?4.2:5.1,holdDur=kind==='baron'?5.5:4.2;
- if(clip){
-  const act=mixer.clipAction(clip);
-  act.reset().setLoop(THREE.LoopOnce,1);
-  act.clampWhenFinished=true;
-  act.setEffectiveTimeScale(clip.duration/animDur);
-  act.play();
+ const visual=e.children.find(c=>c.isGroup&&c!==u.shadow);
+ const mixer=u.visualMixer,clip=tpl?.animations.find(a=>/^Death$/i.test(a.name||''))||null;
+ if(u.shadow)u.shadow.visible=false;
+ scene.add(e); // el kill genérico la quita, pero ahora ESTE cuerpo pasa a ser el cadáver
+ e.visible=true;
+ e.traverse(o=>{if(o.isMesh){o.frustumCulled=false}});
+ const animDur=kind==='baron'?5.2:5.6;
+ if(mixer&&clip){
+  const death=mixer.clipAction(clip);
+  const playing=Object.values(u.visualActions||{}).concat(u.bossAction||[]).filter(a=>a&&a!==death&&a.isRunning());
+  death.reset();death.enabled=true;death.setEffectiveWeight(1);
+  death.setLoop(THREE.LoopOnce,1);death.clampWhenFinished=true;
+  death.setEffectiveTimeScale(clip.duration/animDur);
+  death.fadeIn(.4).play();
+  for(const a of playing)a.fadeOut(.4);
+  u.bossAction=death;
  }
- bossDeathVisuals.push({g,mixer,kind,clip,age:0,animDur,holdDur,
-  baseRotation:g.rotation.clone(),ground:floorBoss(e.position.x,e.position.z),impact:false,settled:false});
+ bossDeathVisuals.push({
+  g:e,mixer,clip,kind,age:0,animDur,holdAge:0,holdDur:10,
+  ground:floorBoss(e.position.x,e.position.z),settleTimer:0,impact:false,
+  tempVec:new THREE.Vector3()
+ });
 }
-const bossDeathBox=new THREE.Box3();
+/* Box3.setFromObject sin precise utiliza los límites rígidos del GLB.
+   En un SkinnedMesh animado NO coincide con las patas/alas y puede dejar
+   al cadáver flotando. Medimos puntos de la malla deformada por los huesos. */
+function actualBossBottom(b){
+ const g=b.g,tmp=b.tempVec;
+ g.updateMatrixWorld(true);
+ let minY=Infinity,count=0;
+ g.traverse(o=>{
+  if(!o.isMesh||!o.visible||o===g.userData.shadow)return;
+  const pos=o.geometry?.attributes?.position;
+  if(!pos||typeof o.getVertexPosition!=='function')return;
+  const step=Math.max(1,Math.ceil(pos.count/1050));
+  for(let i=0;i<pos.count;i+=step){
+   o.getVertexPosition(i,tmp);
+   o.localToWorld(tmp);
+   if(Number.isFinite(tmp.y)){minY=Math.min(minY,tmp.y);count++}
+  }
+ });
+ return count?minY:null;
+}
 function stepBossDeathVisuals(dt){
  for(let i=bossDeathVisuals.length-1;i>=0;i--){
-  const b=bossDeathVisuals[i];b.age+=dt;
-  if(b.age<=b.animDur)b.mixer.update(dt);
-  const t=Math.min(1,b.age/b.animDur);
-  if(b.kind==='baron'){
-   // Se vence lateralmente desde la base, además de reproducir Death del GLB.
-   const u=Math.min(1,Math.max(0,(t-.12)/.74)),fall=u*u*(3-2*u);
-   b.g.rotation.z=b.baseRotation.z-1.21*fall;
-   b.g.rotation.x=b.baseRotation.x+.22*fall;
-   if(!b.impact&&u>=.84){
-    b.impact=true;
-    ring(b.g.position.x,b.g.position.z,0x8952bd,8,.85);
-    spark(b.g.position.x,1.2,b.g.position.z,0xb999e8,38,6,5,1.3);
-    shake(.45);noise(.45,.09,340,80);tone(58,.5,'sawtooth',.14,.48);
+  const b=bossDeathVisuals[i];
+  b.age=Math.min(b.animDur,b.age+dt);
+  if(b.mixer&&b.age<=b.animDur)b.mixer.update(dt);
+  // La animación "Death" del Barón YA flexiona el torso y la cabeza.
+  // NO hay que girar el jefe entero 70 grados sobre su eje: eso retuerce el cadáver.
+  if(b.kind==='baron'&&!b.impact&&b.age>=b.animDur*.74){
+   b.impact=true;
+   ring(b.g.position.x,b.g.position.z,0x8952bd,8,.85);
+   spark(b.g.position.x,.85,b.g.position.z,0xb999e8,32,5,4,1.2);
+   shake(.35);noise(.45,.08,340,80);tone(58,.48,'sawtooth',.12,.48);
+  }
+  // El cuerpo se coloca por la posición REAL de sus vértices skinned,
+  // y la corrección se mantiene hasta que el clip llega a su postura final.
+  b.settleTimer-=dt;
+  if(b.settleTimer<=0||b.age===b.animDur){
+   b.settleTimer=b.age===b.animDur?.18:.12;
+   const bottom=actualBossBottom(b);
+   if(bottom!==null){
+    const diff=b.ground+.04-bottom;
+    if(Math.abs(diff)<60){
+     // Aterriza con fluidez; al terminar el clip, queda apoyado exactamente.
+     b.g.position.y+=diff*(b.age>=b.animDur?1:Math.min(1,dt*8));
+    }
    }
   }
-  // El ajuste usa la caja real del cuerpo, no la altura de la raíz del modelo.
-  // Así el cadáver se apoya en el terreno incluso con la postura final del clip.
-  if(b.age>b.animDur*.48){
-   b.g.updateMatrixWorld(true);
-   bossDeathBox.setFromObject(b.g);
-   const delta=b.ground+.035-bossDeathBox.min.y;
-   if(Number.isFinite(delta)&&Math.abs(delta)<100){
-    const strength=b.age>=b.animDur?1:Math.min(1,dt*5);
-    b.g.position.y+=delta*strength;
-   }
-  }
-  if(b.age>=b.animDur+b.holdDur){
+  if(b.age>=b.animDur&&!paused)b.holdAge+=dt;
+  if(b.holdAge>=b.holdDur){
    scene.remove(b.g);bossDeathVisuals.splice(i,1);
   }
  }
 }
-
 const _bossOnKill=onKill;
-onKill=function(e){if(e.userData.boss)bossDeathClip(e);_bossOnKill(e)};
+onKill=function(e){
+ if(e.userData.boss){
+  // Impedir que la cola de cadáveres genéricos lo arrastre y reduzca a cero.
+  for(let i=dying.length-1;i>=0;i--)if(dying[i].e===e)dying.splice(i,1);
+  bossDeathClip(e);
+ }
+ _bossOnKill(e);
+};
 
 const _bossReset=reset;
 reset=function(){
