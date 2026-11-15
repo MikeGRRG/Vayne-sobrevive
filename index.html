@@ -58,7 +58,7 @@ window.addEventListener('pointerup',e=>{if(e.pointerId===cameraDragPointer)stopC
 window.addEventListener('pointercancel',stopCameraDrag,true);
 window.addEventListener('blur',stopCameraDrag);
 document.addEventListener('wheel',e=>{if(!running||paused||gameOver||e.target.closest('.card'))return;e.preventDefault();cameraDistance=THREE.MathUtils.clamp(cameraDistance+Math.sign(e.deltaY)*1.5,12,36)},{passive:false});
-const renderer=new THREE.WebGLRenderer({antialias:true, powerPreference:'high-performance'});renderer.setPixelRatio(Math.min(devicePixelRatio,1.7));renderer.setSize(innerWidth,innerHeight);renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.15;document.body.appendChild(renderer.domElement);renderer.domElement.style.position='fixed';renderer.domElement.style.inset='0';renderer.domElement.style.zIndex='0';$('hud').style.zIndex='1';
+const renderer=new THREE.WebGLRenderer({antialias:true, powerPreference:'high-performance'});renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.setSize(innerWidth,innerHeight);renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.06;renderer.outputColorSpace=THREE.SRGBColorSpace;document.body.appendChild(renderer.domElement);renderer.domElement.style.position='fixed';renderer.domElement.style.inset='0';renderer.domElement.style.zIndex='0';$('hud').style.zIndex='1';
 scene.add(new THREE.HemisphereLight(0xa8d8ff,0x17202a,2.1));const key=new THREE.DirectionalLight(0xffe0b0,3.1);key.position.set(-8,15,7);key.castShadow=true;key.shadow.mapSize.set(1024,1024);key.shadow.camera.left=-22;key.shadow.camera.right=22;key.shadow.camera.top=22;key.shadow.camera.bottom=-22;scene.add(key);const rim=new THREE.PointLight(0x42c8ff,22,30);rim.position.set(5,5,-7);scene.add(rim);
 const proceduralWorldStart = scene.children.length;
 // GRIETA PROCEDURAL ORIGINAL: mapa MOBA ligero generado con geometría Three.js.
@@ -592,9 +592,9 @@ for(const fx of [...effects]){fx.life-=dt;const t=1-fx.life/fx.max;fx.mesh.scale
 const horizontal=Math.cos(cameraPitch)*cameraDistance;const desired=new THREE.Vector3(hero.position.x+Math.sin(cameraYaw)*horizontal,hero.position.y+1.8+Math.sin(cameraPitch)*cameraDistance,hero.position.z+Math.cos(cameraYaw)*horizontal);camera.position.copy(desired);camera.lookAt(hero.position.x,hero.position.y+1.45,hero.position.z);updateHUD()}
 function endGame(){gameOver=true;paused=true;$('finalstats').textContent=`Has sobrevivido ${Math.floor(elapsed/60)} min ${Math.floor(elapsed%60)} s y eliminado ${kills} minions. Has alcanzado el nivel ${level}.`;$('dead').classList.remove('hidden')}
 function loop(now){requestAnimationFrame(loop);const dt=Math.min((now-last)/1000,.04);last=now;if(running)update(dt);riftDiagClock+=dt;updateRiftDiag();renderer.render(scene,camera)}requestAnimationFrame(loop);
-window.addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);renderer.setPixelRatio(Math.min(devicePixelRatio,1.7))});
+window.addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);renderer.setPixelRatio(Math.min(devicePixelRatio,2))});
 /* ======================= JUICE PACK v7 (ajusta TUNE a tu gusto; teclas: B bloom, M sonido, F3 diagnostico) ======================= */
-const TUNE={cap:85,capStart:10,capRamp:.4,dmgTaken:.6,shake:1,bloom:.6,dmgScale:10};window.TUNE=TUNE;
+const TUNE={cap:85,capStart:10,capRamp:.4,dmgTaken:.6,shake:1,bloom:.35,dmgScale:10};window.TUNE=TUNE;
 function LIM(){return MAPR}
 {const st=document.createElement('style');st.textContent=`#riftDiag{display:none!important}
 #dmg{position:fixed;inset:0;pointer-events:none;z-index:3;overflow:hidden}
